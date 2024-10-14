@@ -33,6 +33,7 @@ const TransactionList = () => {
   const [suggestedTransactions, setSuggestedTransactions] = useState<string[]>([]);
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
   const [newRule, setNewRule] = useState({ pattern: '', businessId: '' });
+  const [recentBusinessAssignments, setRecentBusinessAssignments] = useState<Array<{ description: string, businessId: string }>>([]);
 
   useEffect(() => {
     console.log('Transactions in TransactionList:', transactions);
@@ -50,17 +51,19 @@ const TransactionList = () => {
       // Find the transaction that was just updated
       const updatedTransaction = transactions.find(t => t.id === transactionId);
       if (updatedTransaction) {
+        // Add this assignment to recent business assignments
+        setRecentBusinessAssignments(prev => [
+          { description: updatedTransaction.description, businessId: newBusinessId },
+          ...prev.slice(0, 4) // Keep only the last 5 assignments
+        ]);
+
         // Check for similar transactions
-        const similarTransactions = transactions.filter(t => 
-          t.id !== transactionId && 
-          t.description.toLowerCase().includes(updatedTransaction.description.toLowerCase()) &&
-          !t.businessId
-        );
+        const similarTransactions = findSimilarTransactions(updatedTransaction, newBusinessId);
         
         if (similarTransactions.length > 0) {
           setSuggestedTransactions(similarTransactions.map(t => t.id));
           setNewRule({ 
-            pattern: updatedTransaction.description.toLowerCase(), 
+            pattern: findCommonPattern(updatedTransaction.description, similarTransactions[0].description),
             businessId: newBusinessId 
           });
           setIsRuleDialogOpen(true);
@@ -69,6 +72,56 @@ const TransactionList = () => {
     } else {
       console.error('updateTransaction is not a function', updateTransaction);
     }
+  };
+
+  const findSimilarTransactions = (updatedTransaction: any, newBusinessId: string) => {
+    const recentAssignment = recentBusinessAssignments.find(a => a.businessId === newBusinessId && a.description !== updatedTransaction.description);
+    
+    if (recentAssignment) {
+      // Check for common beginning or ending
+      const commonStart = findCommonStart(updatedTransaction.description, recentAssignment.description);
+      const commonEnd = findCommonEnd(updatedTransaction.description, recentAssignment.description);
+      
+      const pattern = commonStart.length > commonEnd.length ? commonStart : commonEnd;
+      
+      if (pattern.length >= 3) { // Minimum length for a meaningful pattern
+        return transactions.filter(t => 
+          t.id !== updatedTransaction.id && 
+          !t.businessId &&
+          (t.description.startsWith(pattern) || t.description.endsWith(pattern))
+        );
+      }
+    }
+    
+    // Fallback to the previous similarity check
+    return transactions.filter(t => 
+      t.id !== updatedTransaction.id && 
+      t.description.toLowerCase().includes(updatedTransaction.description.toLowerCase()) &&
+      !t.businessId
+    );
+  };
+
+  const findCommonStart = (str1: string, str2: string) => {
+    let i = 0;
+    while (i < str1.length && i < str2.length && str1[i].toLowerCase() === str2[i].toLowerCase()) {
+      i++;
+    }
+    return str1.slice(0, i);
+  };
+
+  const findCommonEnd = (str1: string, str2: string) => {
+    let i = 1;
+    while (i <= str1.length && i <= str2.length && 
+           str1[str1.length - i].toLowerCase() === str2[str2.length - i].toLowerCase()) {
+      i++;
+    }
+    return str1.slice(-i + 1);
+  };
+
+  const findCommonPattern = (str1: string, str2: string) => {
+    const commonStart = findCommonStart(str1, str2);
+    const commonEnd = findCommonEnd(str1, str2);
+    return commonStart.length > commonEnd.length ? commonStart : commonEnd;
   };
 
   const handleAddBusiness = () => {
