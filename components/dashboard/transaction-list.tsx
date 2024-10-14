@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { useTransactionStore } from '@/store/transactionStore';
 import { ChevronUpIcon, ChevronDownIcon } from '@radix-ui/react-icons';
+import { useRuleStore } from '@/store/ruleStore';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 // Update the SortField type to include the new sortable fields
 type SortField = 'date' | 'description' | 'amount' | 'businessId' | 'cardMember' | 'accountNumber';
@@ -27,6 +29,10 @@ const TransactionList = () => {
   const [selectedBusinessForDownload, setSelectedBusinessForDownload] = useState<string>('');
   const [isDownloadDialogOpen, setIsDownloadDialogOpen] = useState(false);
   const [filterText, setFilterText] = useState('');
+  const { rules, addRule } = useRuleStore();
+  const [suggestedTransactions, setSuggestedTransactions] = useState<string[]>([]);
+  const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
+  const [newRule, setNewRule] = useState({ pattern: '', businessId: '' });
 
   useEffect(() => {
     console.log('Transactions in TransactionList:', transactions);
@@ -40,6 +46,26 @@ const TransactionList = () => {
     if (typeof updateTransaction === 'function') {
       console.log('Calling updateTransaction');
       updateTransaction(transactionId, { businessId: newBusinessId });
+      
+      // Find the transaction that was just updated
+      const updatedTransaction = transactions.find(t => t.id === transactionId);
+      if (updatedTransaction) {
+        // Check for similar transactions
+        const similarTransactions = transactions.filter(t => 
+          t.id !== transactionId && 
+          t.description.toLowerCase().includes(updatedTransaction.description.toLowerCase()) &&
+          !t.businessId
+        );
+        
+        if (similarTransactions.length > 0) {
+          setSuggestedTransactions(similarTransactions.map(t => t.id));
+          setNewRule({ 
+            pattern: updatedTransaction.description.toLowerCase(), 
+            businessId: newBusinessId 
+          });
+          setIsRuleDialogOpen(true);
+        }
+      }
     } else {
       console.error('updateTransaction is not a function', updateTransaction);
     }
@@ -165,6 +191,19 @@ const TransactionList = () => {
   const filteredAndSortedTransactions = sortedTransactions.filter(transaction =>
     transaction.description.toLowerCase().includes(filterText.toLowerCase())
   );
+
+  const handleApplyRule = () => {
+    addRule(newRule);
+    suggestedTransactions.forEach(id => {
+      updateTransaction(id, { businessId: newRule.businessId });
+    });
+    setIsRuleDialogOpen(false);
+    setSuggestedTransactions([]);
+    toast({
+      title: 'Rule Applied',
+      description: `Applied ${newRule.businessId} to ${suggestedTransactions.length} transactions and saved the rule.`,
+    });
+  };
 
   return (
     <div>
@@ -293,6 +332,34 @@ const TransactionList = () => {
           ))}
         </TableBody>
       </Table>
+      
+      <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Apply Business to Similar Transactions</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p>
+              Do you want to apply "{newRule.businessId}" to {suggestedTransactions.length} similar transactions?
+            </p>
+            <p>Pattern: "{newRule.pattern}"</p>
+            <ScrollArea className="h-[200px] w-full rounded-md border p-4">
+              {suggestedTransactions.map(id => {
+                const transaction = transactions.find(t => t.id === id);
+                return transaction ? (
+                  <div key={id} className="py-1">
+                    {transaction.date} - {transaction.description} - ${Math.abs(transaction.amount).toFixed(2)}
+                  </div>
+                ) : null;
+              })}
+            </ScrollArea>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRuleDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleApplyRule}>Apply and Save Rule</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
