@@ -9,6 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { useTransactionStore } from '@/store/transactionStore';
+import { ChevronUpIcon, ChevronDownIcon } from '@radix-ui/react-icons';
+
+// Update the SortField type to include the new sortable fields
+type SortField = 'date' | 'description' | 'amount' | 'businessId' | 'cardMember' | 'accountNumber';
+type SortOrder = 'asc' | 'desc';
 
 const TransactionList = () => {
   const { transactions, updateTransaction } = useTransactionStore();
@@ -16,6 +21,9 @@ const TransactionList = () => {
   const [newBusiness, setNewBusiness] = useState('');
   const [isAddingBusiness, setIsAddingBusiness] = useState(false);
   const { toast } = useToast();
+  
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
   useEffect(() => {
     console.log('Transactions in TransactionList:', transactions);
@@ -24,7 +32,7 @@ const TransactionList = () => {
     setBusinesses(uniqueBusinesses);
   }, [transactions]);
 
-  const handleBusinessChange = (transactionId: number, newBusinessId: string) => {
+  const handleBusinessChange = (transactionId: string, newBusinessId: string) => {
     console.log('handleBusinessChange called with:', { transactionId, newBusinessId });
     if (typeof updateTransaction === 'function') {
       console.log('Calling updateTransaction');
@@ -50,6 +58,54 @@ const TransactionList = () => {
         variant: 'destructive',
       });
     }
+  };
+
+  const handleSort = (field: SortField) => {
+    if (field === sortField) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    const compareValues = (aVal: any, bVal: any) => {
+      if (aVal === bVal) return 0;
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+      return aVal < bVal ? -1 : 1;
+    };
+
+    let comparison = 0;
+    switch (sortField) {
+      case 'date':
+        comparison = compareValues(new Date(a.date).getTime(), new Date(b.date).getTime());
+        break;
+      case 'description':
+        comparison = a.description.localeCompare(b.description);
+        break;
+      case 'amount':
+        comparison = compareValues(a.amount, b.amount);
+        break;
+      case 'businessId':
+        comparison = compareValues(a.businessId, b.businessId);
+        break;
+      case 'cardMember':
+        comparison = compareValues(a.cardMember, b.cardMember);
+        break;
+      case 'accountNumber':
+        comparison = compareValues(a.accountNumber, b.accountNumber);
+        break;
+    }
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  const renderSortIcon = (field: SortField) => {
+    if (sortField === field) {
+      return sortOrder === 'asc' ? <ChevronUpIcon className="inline ml-1" /> : <ChevronDownIcon className="inline ml-1" />;
+    }
+    return null;
   };
 
   return (
@@ -82,16 +138,28 @@ const TransactionList = () => {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Description</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Business</TableHead>
-            <TableHead>Card Member</TableHead>
-            <TableHead>Account #</TableHead>
+            <TableHead onClick={() => handleSort('date')} className="cursor-pointer">
+              Date {renderSortIcon('date')}
+            </TableHead>
+            <TableHead onClick={() => handleSort('description')} className="cursor-pointer">
+              Description {renderSortIcon('description')}
+            </TableHead>
+            <TableHead onClick={() => handleSort('amount')} className="cursor-pointer">
+              Amount {renderSortIcon('amount')}
+            </TableHead>
+            <TableHead onClick={() => handleSort('businessId')} className="cursor-pointer">
+              Business {renderSortIcon('businessId')}
+            </TableHead>
+            <TableHead onClick={() => handleSort('cardMember')} className="cursor-pointer">
+              Card Member {renderSortIcon('cardMember')}
+            </TableHead>
+            <TableHead onClick={() => handleSort('accountNumber')} className="cursor-pointer">
+              Account # {renderSortIcon('accountNumber')}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {transactions.map((transaction) => (
+          {sortedTransactions.map((transaction) => (
             <TableRow key={transaction.id}>
               <TableCell>{transaction.date}</TableCell>
               <TableCell>{transaction.description}</TableCell>
