@@ -2,16 +2,23 @@
 
 import React, { useState } from 'react';
 import { useRuleStore } from '@/store/ruleStore';
+import { useTransactionStore } from '@/store/transactionStore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 function RuleManager() {
   const { rules, addRule, removeRule, updateRule } = useRuleStore();
+  const { transactions, updateTransaction } = useTransactionStore();
   const [newRule, setNewRule] = useState({ pattern: '', businessId: '' });
   const [editingRule, setEditingRule] = useState<string | null>(null);
   const { toast } = useToast();
+  const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
+  const [currentRule, setCurrentRule] = useState<{ pattern: string, businessId: string } | null>(null);
+  const [matchingTransactions, setMatchingTransactions] = useState<any[]>([]);
 
   const handleAddRule = () => {
     if (newRule.pattern && newRule.businessId) {
@@ -47,6 +54,29 @@ function RuleManager() {
       title: 'Rule Removed',
       description: 'Rule has been removed successfully.',
     });
+  };
+
+  const handleApplyRule = (rule: { pattern: string, businessId: string }) => {
+    setCurrentRule(rule);
+    const matching = transactions.filter(t => 
+      t.description.toLowerCase().includes(rule.pattern.toLowerCase()) && 
+      (!t.businessId || t.businessId !== rule.businessId)
+    );
+    setMatchingTransactions(matching);
+    setIsApplyDialogOpen(true);
+  };
+
+  const confirmApplyRule = () => {
+    if (currentRule) {
+      matchingTransactions.forEach(t => {
+        updateTransaction(t.id, { businessId: currentRule.businessId });
+      });
+      setIsApplyDialogOpen(false);
+      toast({
+        title: 'Rule Applied',
+        description: `Applied "${currentRule.businessId}" to ${matchingTransactions.length} transactions.`,
+      });
+    }
   };
 
   return (
@@ -104,6 +134,7 @@ function RuleManager() {
                     <>
                       <Button variant="outline" onClick={() => handleEditRule(rule.pattern)}>Edit</Button>
                       <Button variant="destructive" onClick={() => handleRemoveRule(rule.pattern)}>Remove</Button>
+                      <Button variant="secondary" onClick={() => handleApplyRule(rule)}>Apply to Transactions</Button>
                     </>
                   )}
                 </TableCell>
@@ -112,6 +143,31 @@ function RuleManager() {
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={isApplyDialogOpen} onOpenChange={setIsApplyDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Apply Rule to Matching Transactions</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p>
+              Do you want to apply "{currentRule?.businessId}" to {matchingTransactions.length} matching transactions?
+            </p>
+            <p>Pattern: "{currentRule?.pattern}"</p>
+            <ScrollArea className="h-[200px] w-full rounded-md border p-4">
+              {matchingTransactions.map(t => (
+                <div key={t.id} className="py-1">
+                  {t.date} - {t.description} - ${Math.abs(t.amount).toFixed(2)}
+                </div>
+              ))}
+            </ScrollArea>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsApplyDialogOpen(false)}>Cancel</Button>
+            <Button onClick={confirmApplyRule}>Apply Rule</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
