@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRuleStore } from '@/store/ruleStore';
 import { useTransactionStore } from '@/store/transactionStore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 function RuleManager() {
   const { rules, addRule, removeRule, updateRule } = useRuleStore();
@@ -17,8 +18,15 @@ function RuleManager() {
   const [editingRule, setEditingRule] = useState<string | null>(null);
   const { toast } = useToast();
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
+  const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);
   const [currentRule, setCurrentRule] = useState<{ pattern: string, businessId: string } | null>(null);
   const [matchingTransactions, setMatchingTransactions] = useState<any[]>([]);
+  const [businesses, setBusinesses] = useState<string[]>([]);
+
+  useEffect(() => {
+    const uniqueBusinesses = Array.from(new Set(transactions.map(t => t.businessId).filter(Boolean)));
+    setBusinesses(uniqueBusinesses);
+  }, [transactions]);
 
   const handleAddRule = () => {
     if (newRule.pattern && newRule.businessId) {
@@ -48,12 +56,30 @@ function RuleManager() {
     }
   };
 
-  const handleRemoveRule = (pattern: string) => {
-    removeRule(pattern);
-    toast({
-      title: 'Rule Removed',
-      description: 'Rule has been removed successfully.',
-    });
+  const handleRemoveRule = (rule: { pattern: string, businessId: string }) => {
+    setCurrentRule(rule);
+    const matching = transactions.filter(t => 
+      t.description.toLowerCase().includes(rule.pattern.toLowerCase()) && 
+      t.businessId === rule.businessId
+    );
+    setMatchingTransactions(matching);
+    setIsRemoveDialogOpen(true);
+  };
+
+  const confirmRemoveRule = (removeAssignments: boolean) => {
+    if (currentRule) {
+      removeRule(currentRule.pattern);
+      if (removeAssignments) {
+        matchingTransactions.forEach(t => {
+          updateTransaction(t.id, { businessId: undefined });
+        });
+      }
+      setIsRemoveDialogOpen(false);
+      toast({
+        title: 'Rule Removed',
+        description: `Rule has been removed${removeAssignments ? ' and business assignments cleared' : ''}.`,
+      });
+    }
   };
 
   const handleApplyRule = (rule: { pattern: string, businessId: string }) => {
@@ -88,11 +114,21 @@ function RuleManager() {
           value={newRule.pattern}
           onChange={(e) => setNewRule({ ...newRule, pattern: e.target.value })}
         />
-        <Input
-          placeholder="Business ID"
+        <Select
           value={newRule.businessId}
-          onChange={(e) => setNewRule({ ...newRule, businessId: e.target.value })}
-        />
+          onValueChange={(value) => setNewRule({ ...newRule, businessId: value })}
+        >
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Select business" />
+          </SelectTrigger>
+          <SelectContent>
+            {businesses.map((business) => (
+              <SelectItem key={business} value={business}>
+                {business}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button onClick={handleAddRule}>Add Rule</Button>
       </div>
       <div className="overflow-x-auto">
@@ -119,10 +155,21 @@ function RuleManager() {
                 </TableCell>
                 <TableCell>
                   {editingRule === rule.pattern ? (
-                    <Input
+                    <Select
                       value={newRule.businessId || rule.businessId}
-                      onChange={(e) => setNewRule({ ...newRule, businessId: e.target.value })}
-                    />
+                      onValueChange={(value) => setNewRule({ ...newRule, businessId: value })}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Select business" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {businesses.map((business) => (
+                          <SelectItem key={business} value={business}>
+                            {business}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   ) : (
                     rule.businessId
                   )}
@@ -133,7 +180,7 @@ function RuleManager() {
                   ) : (
                     <>
                       <Button variant="outline" onClick={() => handleEditRule(rule.pattern)}>Edit</Button>
-                      <Button variant="destructive" onClick={() => handleRemoveRule(rule.pattern)}>Remove</Button>
+                      <Button variant="destructive" onClick={() => handleRemoveRule(rule)}>Remove</Button>
                       <Button variant="secondary" onClick={() => handleApplyRule(rule)}>Apply to Transactions</Button>
                     </>
                   )}
@@ -165,6 +212,35 @@ function RuleManager() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsApplyDialogOpen(false)}>Cancel</Button>
             <Button onClick={confirmApplyRule}>Apply Rule</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isRemoveDialogOpen} onOpenChange={setIsRemoveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Rule and Clear Assignments?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p>
+              Do you want to remove the rule "{currentRule?.pattern}" for business "{currentRule?.businessId}"?
+            </p>
+            <p>
+              There are {matchingTransactions.length} transactions with this business assignment.
+              Do you also want to clear these assignments?
+            </p>
+            <ScrollArea className="h-[200px] w-full rounded-md border p-4">
+              {matchingTransactions.map(t => (
+                <div key={t.id} className="py-1">
+                  {t.date} - {t.description} - ${Math.abs(t.amount).toFixed(2)}
+                </div>
+              ))}
+            </ScrollArea>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRemoveDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => confirmRemoveRule(false)}>Remove Rule Only</Button>
+            <Button variant="destructive" onClick={() => confirmRemoveRule(true)}>Remove Rule and Clear Assignments</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
