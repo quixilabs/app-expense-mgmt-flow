@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import Papa from 'papaparse';
 import { useTransactionStore, Transaction } from '@/store/transactionStore';
+import PlaidLinkComponent from './plaid-link';
 
 /**
  * TransactionImport component allows users to import transactions from a CSV file.
@@ -15,6 +16,7 @@ import { useTransactionStore, Transaction } from '@/store/transactionStore';
 function TransactionImport() {
   const [file, setFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
   const { toast } = useToast();
   const addTransactions = useTransactionStore((state) => state.addTransactions);
 
@@ -26,6 +28,16 @@ function TransactionImport() {
     if (e.target.files) {
       setFile(e.target.files[0]);
     }
+  };
+
+  const handlePlaidSuccess = () => {
+    console.log('Plaid connection successful');
+    setIsConnected(true);
+    toast({
+      title: 'Success',
+      description: 'Bank account connected successfully!',
+    });
+    // TODO: Implement logic to fetch and display transactions
   };
 
   /**
@@ -125,6 +137,14 @@ function TransactionImport() {
       >
         {isImporting ? 'Importing...' : 'Import Transactions'}
       </Button>
+      <div className="mt-8">
+        <h3 className="text-lg font-semibold mb-2">Connect Bank Account</h3>
+        {!isConnected ? (
+          <PlaidLinkComponent onSuccess={handlePlaidSuccess} />
+        ) : (
+          <p className="text-green-600">Bank account connected successfully!</p>
+        )}
+      </div>
     </div>
   );
 }
