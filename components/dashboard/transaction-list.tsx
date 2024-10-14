@@ -24,6 +24,8 @@ const TransactionList = () => {
   
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [selectedBusinessForDownload, setSelectedBusinessForDownload] = useState<string>('');
+  const [isDownloadDialogOpen, setIsDownloadDialogOpen] = useState(false);
 
   useEffect(() => {
     console.log('Transactions in TransactionList:', transactions);
@@ -108,32 +110,116 @@ const TransactionList = () => {
     return null;
   };
 
+  const handleDownloadCSV = () => {
+    if (!selectedBusinessForDownload) {
+      toast({
+        title: 'Error',
+        description: 'Please select a business to download transactions.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const filteredTransactions = transactions.filter(t => t.businessId === selectedBusinessForDownload);
+    
+    if (filteredTransactions.length === 0) {
+      toast({
+        title: 'No Transactions',
+        description: 'There are no transactions for the selected business.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const csvContent = [
+      ['Date', 'Description', 'Amount', 'Card Member', 'Account Number'],
+      ...filteredTransactions.map(t => [
+        t.date,
+        t.description,
+        t.amount.toFixed(2),
+        t.cardMember || '',
+        t.accountNumber || ''
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${selectedBusinessForDownload}_transactions.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    setIsDownloadDialogOpen(false);
+    toast({
+      title: 'Download Complete',
+      description: `Transactions for ${selectedBusinessForDownload} have been downloaded.`,
+    });
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold">Transactions</h2>
-        <Dialog open={isAddingBusiness} onOpenChange={setIsAddingBusiness}>
-          <DialogTrigger asChild>
-            <Button variant="outline">Add New Business</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Business</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="newBusiness">Business Name</Label>
-                <Input 
-                  id="newBusiness" 
-                  value={newBusiness} 
-                  onChange={(e) => setNewBusiness(e.target.value)}
-                  placeholder="Enter new business name"
-                />
+        <div className="space-x-2">
+          <Dialog open={isAddingBusiness} onOpenChange={setIsAddingBusiness}>
+            <DialogTrigger asChild>
+              <Button variant="outline">Add New Business</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Business</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="newBusiness">Business Name</Label>
+                  <Input 
+                    id="newBusiness" 
+                    value={newBusiness} 
+                    onChange={(e) => setNewBusiness(e.target.value)}
+                    placeholder="Enter new business name"
+                  />
+                </div>
+                <Button onClick={handleAddBusiness}>Add Business</Button>
               </div>
-              <Button onClick={handleAddBusiness}>Add Business</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={isDownloadDialogOpen} onOpenChange={setIsDownloadDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">Download Transactions</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Download Transactions by Business</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="businessSelect">Select Business</Label>
+                  <Select
+                    value={selectedBusinessForDownload}
+                    onValueChange={setSelectedBusinessForDownload}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select business" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {businesses.map((business) => (
+                        <SelectItem key={business} value={business}>
+                          {business}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={handleDownloadCSV}>Download CSV</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
       <Table>
         <TableHeader>
