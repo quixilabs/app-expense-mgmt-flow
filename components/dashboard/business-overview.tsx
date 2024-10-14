@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Bar } from 'react-chartjs-2';
 import {
@@ -11,6 +12,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
+import { useTransactionStore } from '@/store/transactionStore';
 
 ChartJS.register(
   CategoryScale,
@@ -21,16 +23,43 @@ ChartJS.register(
   Legend
 );
 
+interface BusinessData {
+  name: string;
+  expenses: number;
+  income: number;
+}
+
 export function BusinessOverview() {
-  const businesses = [
-    { name: 'Business A', expenses: 5000, income: 8000 },
-    { name: 'Business B', expenses: 3000, income: 6000 },
-    { name: 'Business C', expenses: 2000, income: 4000 },
-  ];
+  const { transactions } = useTransactionStore();
+  const [businessData, setBusinessData] = useState<BusinessData[]>([]);
+
+  useEffect(() => {
+    const businessTotals = transactions.reduce((acc, transaction) => {
+      if (transaction.businessId) {
+        if (!acc[transaction.businessId]) {
+          acc[transaction.businessId] = { expenses: 0, income: 0 };
+        }
+        if (transaction.amount < 0) {
+          acc[transaction.businessId].expenses += Math.abs(transaction.amount);
+        } else {
+          acc[transaction.businessId].income += transaction.amount;
+        }
+      }
+      return acc;
+    }, {} as Record<string, { expenses: number; income: number }>);
+
+    const formattedData = Object.entries(businessTotals).map(([name, data]) => ({
+      name,
+      expenses: parseFloat(data.expenses.toFixed(2)),
+      income: parseFloat(data.income.toFixed(2)),
+    }));
+
+    setBusinessData(formattedData);
+  }, [transactions]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {businesses.map((business) => (
+      {businessData.map((business) => (
         <Card key={business.name}>
           <CardHeader>
             <CardTitle>{business.name}</CardTitle>
@@ -47,8 +76,26 @@ export function BusinessOverview() {
                 ],
               }}
               options={{
-                plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true } },
+                responsive: true,
+                plugins: { 
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (context) => {
+                        const value = context.raw as number;
+                        return `$${value.toFixed(2)}`;
+                      }
+                    }
+                  }
+                },
+                scales: { 
+                  y: { 
+                    beginAtZero: true,
+                    ticks: {
+                      callback: (value) => `$${value}`
+                    }
+                  } 
+                },
               }}
             />
           </CardContent>
