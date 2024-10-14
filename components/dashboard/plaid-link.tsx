@@ -1,14 +1,19 @@
 "use client"
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import axios from 'axios';
+import { Button } from '@/components/ui/button';
 
 interface PlaidLinkComponentProps {
-  onSuccess: () => void;
+  onSuccess: (public_token: string) => void;
 }
 
 const PlaidLinkComponent: React.FC<PlaidLinkComponentProps> = ({ onSuccess }) => {
   const [linkToken, setLinkToken] = useState<string | null>(null);
+  const onSuccessCallback = useCallback((public_token: string) => {
+    console.log('Plaid Link success callback triggered');
+    onSuccess(public_token);
+  }, [onSuccess]);
 
   useEffect(() => {
     const createLinkToken = async () => {
@@ -24,39 +29,17 @@ const PlaidLinkComponent: React.FC<PlaidLinkComponentProps> = ({ onSuccess }) =>
     createLinkToken();
   }, []);
 
-  const handleSuccess = async (public_token: string, metadata: any) => {
-    try {
-      console.log('Plaid Link success. Exchanging token...');
-      await axios.post('/api/plaid/exchange-token', {
-        public_token,
-      });
-      console.log('Token exchange successful');
-      onSuccess();
-    } catch (error) {
-      console.error('Error exchanging public token:', error);
-    }
-  };
-
-  const config: Parameters<typeof usePlaidLink>[0] = {
+  const { open, ready } = usePlaidLink({
     token: linkToken!,
-    onSuccess: handleSuccess,
-  };
-
-  const { open, ready } = usePlaidLink(config);
+    onSuccess: onSuccessCallback,
+  });
 
   console.log('Plaid Link state:', { linkToken, ready });
 
   return (
-    <button
-      onClick={() => {
-        console.log('Connect Bank Account clicked');
-        open();
-      }}
-      disabled={!ready}
-      className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:bg-gray-400"
-    >
-      Connect Bank Account
-    </button>
+    <Button onClick={() => open()} disabled={!ready}>
+      Connect a bank account
+    </Button>
   );
 };
 

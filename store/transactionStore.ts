@@ -1,42 +1,45 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 export interface Transaction {
-  id: number;
+  id: string;
   date: string;
   description: string;
-  amount: number;
-  businessId: string;
   cardMember: string;
   accountNumber: string;
+  amount: number;
+  businessId: string;
 }
 
 interface TransactionStore {
   transactions: Transaction[];
   addTransactions: (newTransactions: Transaction[]) => void;
-  updateTransaction: (id: number, updates: Partial<Transaction>) => void;
+  updateTransaction: (id: string, updates: Partial<Transaction>) => void;
+  plaidAccessToken: string | null;
+  setPlaidAccessToken: (token: string) => void;
 }
 
-export const useTransactionStore = create<TransactionStore>((set) => ({
-  transactions: [],
-  addTransactions: (newTransactions) => {
-    // console.log('Adding transactions:', newTransactions);
-    set((state) => {
-      const updatedTransactions = [...state.transactions, ...newTransactions];
-    //   console.log('Updated transactions:', updatedTransactions);
-      return { transactions: updatedTransactions };
-    });
-  },
-  updateTransaction: (id, updates) => {
-    // console.log('Updating transaction:', { id, updates });
-    set((state) => {
-      const updatedTransactions = state.transactions.map((transaction) =>
-        transaction.id === id ? { ...transaction, ...updates } : transaction
-      );
-    //   console.log('Updated transactions:', updatedTransactions);
-      return { transactions: updatedTransactions };
-    });
-  },
-}));
+export const useTransactionStore = create<TransactionStore>()(
+  persist(
+    (set) => ({
+      transactions: [],
+      addTransactions: (newTransactions) =>
+        set((state) => ({ transactions: [...state.transactions, ...newTransactions] })),
+      updateTransaction: (id, updates) =>
+        set((state) => ({
+          transactions: state.transactions.map((t) =>
+            t.id === id ? { ...t, ...updates } : t
+          ),
+        })),
+      plaidAccessToken: null,
+      setPlaidAccessToken: (token) => set({ plaidAccessToken: token }),
+    }),
+    {
+      name: 'transaction-store',
+      storage: createJSONStorage(() => (typeof window !== 'undefined' ? localStorage : null)),
+    }
+  )
+);
 
 // Add this line at the end of the file
-// console.log('transactionStore loaded');
+console.log('transactionStore loaded');

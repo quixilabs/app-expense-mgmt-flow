@@ -1,15 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-
-  output: 'export',
+  // Remove any "output: 'export'" configuration if present
+  // output: 'export',
   eslint: {
     ignoreDuringBuilds: true,
   },
   images: { unoptimized: true },
-  experimental: {
-    appDir: true,
-  },
 };
 
 module.exports = nextConfig;
