@@ -26,6 +26,7 @@ const TransactionList = () => {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [selectedBusinessForDownload, setSelectedBusinessForDownload] = useState<string>('');
   const [isDownloadDialogOpen, setIsDownloadDialogOpen] = useState(false);
+  const [filterText, setFilterText] = useState('');
 
   useEffect(() => {
     console.log('Transactions in TransactionList:', transactions);
@@ -161,6 +162,10 @@ const TransactionList = () => {
     });
   };
 
+  const filteredAndSortedTransactions = sortedTransactions.filter(transaction =>
+    transaction.description.toLowerCase().includes(filterText.toLowerCase())
+  );
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -221,6 +226,16 @@ const TransactionList = () => {
           </Dialog>
         </div>
       </div>
+      <div className="mb-4">
+        <Label htmlFor="filterTransactions">Filter Transactions</Label>
+        <Input
+          id="filterTransactions"
+          placeholder="Search by description..."
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          className="max-w-sm"
+        />
+      </div>
       <Table>
         <TableHeader>
           <TableRow>
@@ -245,7 +260,7 @@ const TransactionList = () => {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedTransactions.map((transaction) => (
+          {filteredAndSortedTransactions.map((transaction) => (
             <TableRow key={transaction.id}>
               <TableCell>{transaction.date}</TableCell>
               <TableCell>{transaction.description}</TableCell>
