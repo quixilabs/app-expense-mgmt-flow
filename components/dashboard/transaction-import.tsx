@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import Papa from 'papaparse';
-import { useTransactionStore, Transaction } from '@/store/transactionStore';
+import { addTransaction, Transaction } from '@/utils/storeUtils';
 import PlaidLinkComponent from './plaid-link';
 
 /**
@@ -18,12 +18,7 @@ function TransactionImport() {
   const [isImporting, setIsImporting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const { toast } = useToast();
-  const { addTransactions, setPlaidAccessToken, plaidAccessToken } = useTransactionStore();
   const [isExchangingToken, setIsExchangingToken] = useState(false);
-
-  useEffect(() => {
-    console.log('Current Plaid access token:', plaidAccessToken);
-  }, [plaidAccessToken]);
 
   /**
    * Handles file selection change event.
@@ -64,12 +59,16 @@ function TransactionImport() {
       const data = await response.json();
       console.log('Received data from exchange token:', data);
 
-      setPlaidAccessToken(data.access_token);
-      console.log('Plaid access token set in store:', data.access_token);
-      
-      // Add this line to verify the token is set
-      console.log('Current Plaid access token after setting:', useTransactionStore.getState().plaidAccessToken);
-      
+      // Store the access token securely (e.g., in your database)
+      // You might want to create a new API route to store this token securely
+      await fetch('/api/store-plaid-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ access_token: data.access_token }),
+      });
+
       setIsConnected(true);
       toast({
         title: 'Success',
@@ -90,18 +89,8 @@ function TransactionImport() {
   const fetchPlaidTransactions = async () => {
     try {
       setIsImporting(true);
-      const currentToken = useTransactionStore.getState().plaidAccessToken;
-      console.log('Current Plaid access token before fetching:', currentToken);
-    
-      if (!currentToken) {
-        throw new Error('Plaid access token is missing');
-      }
-      
       const response = await fetch('/api/plaid/transactions', {
         method: 'GET',
-        headers: {
-          'X-Plaid-Access-Token': currentToken,
-        },
       });
       
       if (!response.ok) {
@@ -114,16 +103,17 @@ function TransactionImport() {
       console.log('Fetched Plaid transactions:', data);
 
       const plaidTransactions = data.transactions.map((transaction: any) => ({
-        id: transaction.transaction_id,
-        date: transaction.date,
+        date: new Date(transaction.date),
         description: transaction.name,
         cardMember: '', // Plaid doesn't provide this information
         accountNumber: transaction.account_id,
         amount: transaction.amount,
-        businessId: '',
+        businessId: null,
       }));
 
-      addTransactions(plaidTransactions);
+      for (const transaction of plaidTransactions) {
+        await addTransaction(transaction);
+      }
 
       toast({
         title: 'Import Successful',
@@ -157,29 +147,42 @@ function TransactionImport() {
     }    
 
     setIsImporting(true);
+    console.log('Starting CSV import process');
 
     Papa.parse(file, {
-      complete: (results) => {
+      complete: async (results) => {
         try {
+          console.log('CSV parsing complete. Raw data:', results.data);
           const transactions = (results.data as string[][])
             .slice(1) // Skip header row
-            .map((row, index) => ({
-              id: `csv-${index}`,
-              date: row[0],
+            .map((row) => ({
+              date: new Date(row[0]),
               description: row[2],
               cardMember: row[3],
               accountNumber: row[4],
               amount: parseFloat(row[5]),
-              businessId: '',
+              businessId: null,
             }));
+
+          console.log('Mapped transactions:', transactions);
 
           const validTransactions = transactions.filter(transaction => 
             transaction.date && 
             transaction.description && 
             !isNaN(transaction.amount)
-          ) as Transaction[];
+          ) as Omit<Transaction, 'id'>[];
 
-          addTransactions(validTransactions);
+          console.log('Valid transactions:', validTransactions);
+
+          for (const transaction of validTransactions) {
+            console.log('Adding transaction:', transaction);
+            try {
+              const addedTransaction = await addTransaction(transaction);
+              console.log('Transaction added successfully:', addedTransaction);
+            } catch (error) {
+              console.error('Error adding transaction:', error);
+            }
+          }
 
           toast({
             title: 'Import Successful',
@@ -197,6 +200,7 @@ function TransactionImport() {
           });
         } finally {
           setIsImporting(false);
+          console.log('Import process completed');
         }
       },
       error: (error) => {

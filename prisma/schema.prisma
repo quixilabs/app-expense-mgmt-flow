@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model transactions {
+  id             String    @id @default(uuid())
+  amount         Decimal   @db.Decimal(10, 2)
+  description    String
+  date           DateTime  @db.Date
+  category       String?
+  business_id    String?   // Change this line
+  card_member    String?   // Change this line
+  account_number String?   // Change this line
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  business       businesses? @relation(fields: [business_id], references: [id])
+}
+
+model businesses {
+  id           String        @id @default(uuid())
+  name         String        @unique
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+  transactions transactions[]
+  rules        rules[]
+}
+
+model rules {
+  id          String    @id @default(uuid())
+  pattern     String
+  business_id String
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  business    businesses @relation(fields: [business_id], references: [id])
+}

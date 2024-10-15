@@ -4,8 +4,9 @@ import dynamic from 'next/dynamic';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useTheme } from '@/app/providers/ThemeProvider';
 import { Button } from '@/components/ui/button';
-import { clearStoreOnce } from '@/utils/storeUtils';
 import { useState } from 'react';
+import { supabase } from '@/utils/supabase';
+import { useToast } from '@/components/ui/use-toast';
 
 const RuleManager = dynamic(() => import('@/components/dashboard/rule-manager'), {
   ssr: false,
@@ -15,10 +16,48 @@ const RuleManager = dynamic(() => import('@/components/dashboard/rule-manager'),
 export default function SettingsPage() {
   const { theme } = useTheme();
   const [clearMessage, setClearMessage] = useState('');
+  const { toast } = useToast();
 
-  const handleClearStore = () => {
-    clearStoreOnce();
-    setClearMessage('Store cleared successfully!');
+  const handleClearStore = async () => {
+    try {
+      // Clear transactions
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .delete()
+        .not('id', 'is', null); // This deletes all rows
+
+      if (transactionError) throw transactionError;
+
+      // Clear rules
+      const { error: ruleError } = await supabase
+        .from('rules')
+        .delete()
+        .not('id', 'is', null);
+
+      if (ruleError) throw ruleError;
+
+      // Clear businesses
+      const { error: businessError } = await supabase
+        .from('businesses')
+        .delete()
+        .not('id', 'is', null);
+
+      if (businessError) throw businessError;
+
+      setClearMessage('All data cleared successfully!');
+      toast({
+        title: 'Success',
+        description: 'All data has been cleared from the database.',
+      });
+    } catch (error) {
+      console.error('Failed to clear data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to clear data. Please try again.',
+        variant: 'destructive',
+      });
+    }
+
     setTimeout(() => setClearMessage(''), 3000); // Clear message after 3 seconds
   };
 
@@ -38,7 +77,7 @@ export default function SettingsPage() {
         <h2 className="text-2xl font-semibold mb-4">Data Management</h2>
         <div className="flex flex-col space-y-4">
           <Button onClick={handleClearStore} variant="destructive">
-            Clear Zustand Store
+            Clear All Data
           </Button>
           {clearMessage && (
             <p className="text-green-500 font-semibold">{clearMessage}</p>

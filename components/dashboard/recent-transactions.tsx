@@ -1,60 +1,30 @@
 "use client"
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-
-interface Transaction {
-  id: string;
-  date: string;
-  receipt: string;
-  description: string;
-  cardMember: string;
-  accountNumber: string;
-  amount: number;
-}
+import { getTransactions, Transaction } from '@/utils/storeUtils';
 
 export function RecentTransactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-
-  const loadTransactions = () => {
-    const storedTransactions = localStorage.getItem('transactions');
-    console.log('Stored transactions:', storedTransactions);
-    if (storedTransactions) {
-      const parsedTransactions = JSON.parse(storedTransactions);
-      console.log('Parsed transactions:', parsedTransactions);
-      setTransactions(parsedTransactions);
-    }
-  };
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadTransactions();
+    async function fetchRecentTransactions() {
+      try {
+        const data = await getTransactions();
+        setTransactions(data.slice(0, 5)); // Get only the 5 most recent transactions
+      } catch (error) {
+        console.error('Failed to fetch recent transactions:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
 
-    const handleTransactionsUpdated = () => {
-      loadTransactions();
-    };
-
-    window.addEventListener('transactionsUpdated', handleTransactionsUpdated);
-
-    return () => {
-      window.removeEventListener('transactionsUpdated', handleTransactionsUpdated);
-    };
+    fetchRecentTransactions();
   }, []);
 
-  console.log('Transactions in state:', transactions);
-
-  if (transactions.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Transactions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p>No transactions found. Please import some transactions.</p>
-        </CardContent>
-      </Card>
-    );
-  }
+  if (isLoading) return <div>Loading...</div>;
 
   return (
     <Card>
@@ -75,13 +45,13 @@ export function RecentTransactions() {
           <TableBody>
             {transactions.map((transaction) => (
               <TableRow key={transaction.id}>
-                <TableCell>{transaction.date || 'N/A'}</TableCell>
-                <TableCell>{transaction.description || 'N/A'}</TableCell>
+                <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
+                <TableCell>{transaction.description}</TableCell>
                 <TableCell className={transaction.amount < 0 ? 'text-destructive' : 'text-green-600'}>
-                  ${typeof transaction.amount === 'number' ? Math.abs(transaction.amount).toFixed(2) : 'N/A'}
+                  ${Math.abs(Number(transaction.amount)).toFixed(2)}
                 </TableCell>
-                <TableCell>{transaction.cardMember || 'N/A'}</TableCell>
-                <TableCell>{transaction.accountNumber || 'N/A'}</TableCell>
+                <TableCell>{transaction.card_member || 'N/A'}</TableCell>
+                <TableCell>{transaction.account_number || 'N/A'}</TableCell>
               </TableRow>
             ))}
           </TableBody>

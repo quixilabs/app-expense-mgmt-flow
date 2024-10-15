@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,18 +8,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
-import { useTransactionStore } from '@/store/transactionStore';
 import { ChevronUpIcon, ChevronDownIcon } from '@radix-ui/react-icons';
-import { useRuleStore } from '@/store/ruleStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { getTransactions, deleteTransaction, updateTransaction, getBusinesses, addBusiness, Transaction, Business } from '@/utils/storeUtils';
+import { getRules, addRule, Rule } from '@/store/ruleStore';
 
 // Update the SortField type to include the new sortable fields
 type SortField = 'date' | 'description' | 'amount' | 'businessId' | 'cardMember' | 'accountNumber';
 type SortOrder = 'asc' | 'desc';
 
 const TransactionList = () => {
-  const { transactions, updateTransaction } = useTransactionStore();
-  const [businesses, setBusinesses] = useState<string[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [newBusiness, setNewBusiness] = useState('');
   const [isAddingBusiness, setIsAddingBusiness] = useState(false);
   const { toast } = useToast();
@@ -29,31 +30,82 @@ const TransactionList = () => {
   const [selectedBusinessForDownload, setSelectedBusinessForDownload] = useState<string>('');
   const [isDownloadDialogOpen, setIsDownloadDialogOpen] = useState(false);
   const [filterText, setFilterText] = useState('');
-  const { rules, addRule } = useRuleStore();
+  const [rules, setRules] = useState<Rule[]>([]);
   const [suggestedTransactions, setSuggestedTransactions] = useState<string[]>([]);
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
-  const [newRule, setNewRule] = useState({ pattern: '', businessId: '' });
-  const [recentBusinessAssignments, setRecentBusinessAssignments] = useState<Array<{ description: string, businessId: string }>>([]);
+  const [newRule, setNewRule] = useState({ pattern: '', business_id: '' });
+  const [recentBusinessAssignments, setRecentBusinessAssignments] = useState<Array<{ description: string, business_id: string }>>([]);
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [transactionData, businessData, rulesData] = await Promise.all([
+        getTransactions(),
+        getBusinesses(),
+        getRules()
+      ]);
+      console.log('Fetched transactions:', transactionData);
+      setTransactions(transactionData);
+      setBusinesses(businessData);
+      setRules(rulesData);
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch data. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
-    console.log('Transactions in TransactionList:', transactions);
-    const uniqueBusinesses = Array.from(new Set(transactions.map(t => t.businessId).filter(Boolean)));
-    console.log('Unique businesses:', uniqueBusinesses);
-    setBusinesses(uniqueBusinesses);
-  }, [transactions]);
+    fetchData();
+  }, [fetchData]);
 
-  const handleBusinessChange = (transactionId: string, newBusinessId: string) => {
-    console.log('handleBusinessChange called with:', { transactionId, newBusinessId });
-    if (typeof updateTransaction === 'function') {
-      console.log('Calling updateTransaction');
-      updateTransaction(transactionId, { businessId: newBusinessId });
+  useEffect(() => {
+    const handleTransactionsUpdated = () => {
+      console.log('Transactions updated event received');
+      fetchData();
+    };
+
+    window.addEventListener('transactionsUpdated', handleTransactionsUpdated);
+
+    return () => {
+      window.removeEventListener('transactionsUpdated', handleTransactionsUpdated);
+    };
+  }, [fetchData]);
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteTransaction(id);
+      setTransactions(transactions.filter(t => t.id !== id));
+      toast({
+        title: 'Transaction Deleted',
+        description: 'The transaction has been successfully deleted.',
+      });
+    } catch (error) {
+      console.error('Failed to delete transaction:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete the transaction. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleBusinessChange = async (transactionId: string, newBusinessId: string) => {
+    try {
+      const updatedTransaction = await updateTransaction(transactionId, { business_id: newBusinessId });
+      setTransactions(transactions.map(t => t.id === transactionId ? updatedTransaction : t));
       
-      // Find the transaction that was just updated
-      const updatedTransaction = transactions.find(t => t.id === transactionId);
+      // Remove this line as it's redundant
+      // const updatedTransaction = transactions.find(t => t.id === transactionId);
       if (updatedTransaction) {
         // Add this assignment to recent business assignments
         setRecentBusinessAssignments(prev => [
-          { description: updatedTransaction.description, businessId: newBusinessId },
+          { description: updatedTransaction.description, business_id: newBusinessId },
           ...prev.slice(0, 4) // Keep only the last 5 assignments
         ]);
 
@@ -64,18 +116,23 @@ const TransactionList = () => {
           setSuggestedTransactions(similarTransactions.map(t => t.id));
           setNewRule({ 
             pattern: findCommonPattern(updatedTransaction.description, similarTransactions[0].description),
-            businessId: newBusinessId 
+            business_id: newBusinessId 
           });
           setIsRuleDialogOpen(true);
         }
       }
-    } else {
-      console.error('updateTransaction is not a function', updateTransaction);
+    } catch (error) {
+      console.error('Failed to update transaction:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update the transaction. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
   const findSimilarTransactions = (updatedTransaction: any, newBusinessId: string) => {
-    const recentAssignment = recentBusinessAssignments.find(a => a.businessId === newBusinessId && a.description !== updatedTransaction.description);
+    const recentAssignment = recentBusinessAssignments.find(a => a.business_id === newBusinessId && a.description !== updatedTransaction.description);
     
     if (recentAssignment) {
       // Check for common beginning or ending
@@ -87,7 +144,7 @@ const TransactionList = () => {
       if (pattern.length >= 3) { // Minimum length for a meaningful pattern
         return transactions.filter(t => 
           t.id !== updatedTransaction.id && 
-          !t.businessId &&
+          !t.business_id &&
           (t.description.startsWith(pattern) || t.description.endsWith(pattern))
         );
       }
@@ -97,7 +154,7 @@ const TransactionList = () => {
     return transactions.filter(t => 
       t.id !== updatedTransaction.id && 
       t.description.toLowerCase().includes(updatedTransaction.description.toLowerCase()) &&
-      !t.businessId
+      !t.business_id
     );
   };
 
@@ -124,15 +181,25 @@ const TransactionList = () => {
     return commonStart.length > commonEnd.length ? commonStart : commonEnd;
   };
 
-  const handleAddBusiness = () => {
-    if (newBusiness && !businesses.includes(newBusiness)) {
-      setBusinesses([...businesses, newBusiness]);
-      setNewBusiness('');
-      setIsAddingBusiness(false);
-      toast({
-        title: 'Business Added',
-        description: `${newBusiness} has been added to the list of businesses.`,
-      });
+  const handleAddBusiness = async () => {
+    if (newBusiness && !businesses.some(b => b.name === newBusiness)) {
+      try {
+        const addedBusiness = await addBusiness(newBusiness);
+        setBusinesses([...businesses, addedBusiness]);
+        setNewBusiness('');
+        setIsAddingBusiness(false);
+        toast({
+          title: 'Business Added',
+          description: `${newBusiness} has been added to the list of businesses.`,
+        });
+      } catch (error) {
+        console.error('Failed to add business:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to add the business. Please try again.',
+          variant: 'destructive',
+        });
+      }
     } else {
       toast({
         title: 'Error',
@@ -171,13 +238,13 @@ const TransactionList = () => {
         comparison = compareValues(a.amount, b.amount);
         break;
       case 'businessId':
-        comparison = compareValues(a.businessId, b.businessId);
+        comparison = compareValues(a.business_id, b.business_id);
         break;
       case 'cardMember':
-        comparison = compareValues(a.cardMember, b.cardMember);
+        comparison = compareValues(a.card_member, b.card_member);
         break;
       case 'accountNumber':
-        comparison = compareValues(a.accountNumber, b.accountNumber);
+        comparison = compareValues(a.account_number, b.account_number);
         break;
     }
     return sortOrder === 'asc' ? comparison : -comparison;
@@ -200,7 +267,7 @@ const TransactionList = () => {
       return;
     }
 
-    const filteredTransactions = transactions.filter(t => t.businessId === selectedBusinessForDownload);
+    const filteredTransactions = transactions.filter(t => t.business_id === selectedBusinessForDownload);
     
     if (filteredTransactions.length === 0) {
       toast({
@@ -217,8 +284,8 @@ const TransactionList = () => {
         t.date,
         t.description,
         t.amount.toFixed(2),
-        t.cardMember || '',
-        t.accountNumber || ''
+        t.card_member || '',
+        t.account_number || ''
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -245,18 +312,30 @@ const TransactionList = () => {
     transaction.description.toLowerCase().includes(filterText.toLowerCase())
   );
 
-  const handleApplyRule = () => {
-    addRule(newRule);
-    suggestedTransactions.forEach(id => {
-      updateTransaction(id, { businessId: newRule.businessId });
-    });
-    setIsRuleDialogOpen(false);
-    setSuggestedTransactions([]);
-    toast({
-      title: 'Rule Applied',
-      description: `Applied ${newRule.businessId} to ${suggestedTransactions.length} transactions and saved the rule.`,
-    });
+  const handleApplyRule = async () => {
+    try {
+      const addedRule = await addRule(newRule);
+      setRules([...rules, addedRule]);
+      suggestedTransactions.forEach(id => {
+        updateTransaction(id, { business_id: newRule.business_id });
+      });
+      setIsRuleDialogOpen(false);
+      setSuggestedTransactions([]);
+      toast({
+        title: 'Rule Applied',
+        description: `Applied ${newRule.business_id} to ${suggestedTransactions.length} transactions and saved the rule.`,
+      });
+    } catch (error) {
+      console.error('Failed to apply rule:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to apply rule. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
+
+  if (isLoading) return <div>Loading transactions...</div>;
 
   return (
     <div>
@@ -305,8 +384,8 @@ const TransactionList = () => {
                     </SelectTrigger>
                     <SelectContent>
                       {businesses.map((business) => (
-                        <SelectItem key={business} value={business}>
-                          {business}
+                        <SelectItem key={business.id} value={business.id}>
+                          {business.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -349,38 +428,41 @@ const TransactionList = () => {
             <TableHead onClick={() => handleSort('accountNumber')} className="cursor-pointer">
               Account # {renderSortIcon('accountNumber')}
             </TableHead>
+            <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {filteredAndSortedTransactions.map((transaction) => (
             <TableRow key={transaction.id}>
-              <TableCell>{transaction.date}</TableCell>
+              <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
               <TableCell>{transaction.description}</TableCell>
               <TableCell className={transaction.amount < 0 ? 'text-destructive' : 'text-green-600'}>
                 ${Math.abs(transaction.amount).toFixed(2)}
               </TableCell>
               <TableCell>
                 <Select
-                  value={transaction.businessId || ''}
-                  onValueChange={(value) => {
-                    console.log('Select onValueChange called with:', value);
-                    handleBusinessChange(transaction.id, value);
-                  }}
+                  value={transaction.business_id || ''}
+                  onValueChange={(value) => handleBusinessChange(transaction.id, value)}
                 >
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Select business" />
                   </SelectTrigger>
                   <SelectContent>
                     {businesses.map((business) => (
-                      <SelectItem key={business} value={business}>
-                        {business}
+                      <SelectItem key={business.id} value={business.id}>
+                        {business.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </TableCell>
-              <TableCell>{transaction.cardMember}</TableCell>
-              <TableCell>{transaction.accountNumber}</TableCell>
+              <TableCell>{transaction.card_member}</TableCell>
+              <TableCell>{transaction.account_number}</TableCell>
+              <TableCell>
+                <Button onClick={() => handleDelete(transaction.id)} variant="destructive">
+                  Delete
+                </Button>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -393,7 +475,7 @@ const TransactionList = () => {
           </DialogHeader>
           <div className="space-y-4">
             <p>
-              Do you want to apply "{newRule.businessId}" to {suggestedTransactions.length} similar transactions?
+              Do you want to apply "{newRule.business_id}" to {suggestedTransactions.length} similar transactions?
             </p>
             <p>Pattern: "{newRule.pattern}"</p>
             <ScrollArea className="h-[200px] w-full rounded-md border p-4">

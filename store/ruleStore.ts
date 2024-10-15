@@ -1,30 +1,49 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { supabase } from '@/utils/supabase';
 
-interface Rule {
+export interface Rule {
+  id: string;
   pattern: string;
-  businessId: string;
+  business_id: string;
 }
 
-interface RuleStore {
-  rules: Rule[];
-  addRule: (rule: Rule) => void;
-  removeRule: (pattern: string) => void;
-  updateRule: (oldPattern: string, newRule: Rule) => void;
+export async function getRules(): Promise<Rule[]> {
+  const { data, error } = await supabase
+    .from('rules')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
 }
 
-export const useRuleStore = create<RuleStore>()(
-  persist(
-    (set) => ({
-      rules: [],
-      addRule: (rule) => set((state) => ({ rules: [...state.rules, rule] })),
-      removeRule: (pattern) => set((state) => ({ rules: state.rules.filter(r => r.pattern !== pattern) })),
-      updateRule: (oldPattern, newRule) => set((state) => ({
-        rules: state.rules.map(r => r.pattern === oldPattern ? newRule : r)
-      })),
-    }),
-    {
-      name: 'rule-storage',
-    }
-  )
-);
+export async function addRule(rule: Omit<Rule, 'id'>): Promise<Rule> {
+  const { data, error } = await supabase
+    .from('rules')
+    .insert([rule])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function removeRule(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('rules')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+}
+
+export async function updateRule(id: string, updates: Partial<Rule>): Promise<Rule> {
+  const { data, error } = await supabase
+    .from('rules')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}

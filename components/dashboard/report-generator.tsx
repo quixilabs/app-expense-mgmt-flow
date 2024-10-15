@@ -7,25 +7,38 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DatePicker } from '@/components/ui/date-picker';
 import { useToast } from '@/components/ui/use-toast';
-import { useTransactionStore } from '@/store/transactionStore';
+import { getTransactions, getBusinesses, Transaction, Business } from '@/utils/storeUtils';
 
 export function ReportGenerator() {
   const [reportType, setReportType] = useState('');
   const [business, setBusiness] = useState('');
   const [startDate, setStartDate] = useState<Date | null>(new Date());
   const [endDate, setEndDate] = useState<Date | null>(new Date());
-  const [businesses, setBusinesses] = useState<string[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
   const { toast } = useToast();
-  const { transactions } = useTransactionStore();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const uniqueBusinesses = Array.from(new Set(transactions.map(t => t.businessId).filter(Boolean)));
-    setBusinesses(uniqueBusinesses);
-  }, [transactions]);
+    async function fetchData() {
+      try {
+        const [transactionData, businessData] = await Promise.all([
+          getTransactions(),
+          getBusinesses()
+        ]);
+        setTransactions(transactionData);
+        setBusinesses(businessData);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
 
-  useEffect(() => {
-    console.log('Current state:', { reportType, business, startDate, endDate });
-  }, [reportType, business, startDate, endDate]);
+    fetchData();
+  }, []);
+
+  if (isLoading) return <div>Loading...</div>;
 
   const handleGenerateReport = () => {
     console.log('Generate Report button clicked');
@@ -111,7 +124,7 @@ export function ReportGenerator() {
             </SelectTrigger>
             <SelectContent>
               {businesses.map((b) => (
-                <SelectItem key={b} value={b}>{b}</SelectItem>
+                <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

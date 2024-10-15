@@ -12,7 +12,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { useTransactionStore } from '@/store/transactionStore';
+import { getTransactions, Transaction } from '@/utils/storeUtils';
 
 ChartJS.register(
   CategoryScale,
@@ -30,8 +30,21 @@ interface BusinessData {
 }
 
 export function BusinessOverview() {
-  const { transactions } = useTransactionStore();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [businessData, setBusinessData] = useState<BusinessData[]>([]);
+
+  useEffect(() => {
+    async function fetchTransactions() {
+      try {
+        const data = await getTransactions();
+        setTransactions(data);
+      } catch (error) {
+        console.error('Failed to fetch transactions:', error);
+      }
+    }
+
+    fetchTransactions();
+  }, []);
 
   useEffect(() => {
     const businessTotals = transactions.reduce((acc, transaction) => {
@@ -39,10 +52,10 @@ export function BusinessOverview() {
         if (!acc[transaction.businessId]) {
           acc[transaction.businessId] = { expenses: 0, income: 0 };
         }
-        if (transaction.amount < 0) {
-          acc[transaction.businessId].expenses += Math.abs(transaction.amount);
+        if (Number(transaction.amount) < 0) {
+          acc[transaction.businessId].expenses += Math.abs(Number(transaction.amount));
         } else {
-          acc[transaction.businessId].income += transaction.amount;
+          acc[transaction.businessId].income += Number(transaction.amount);
         }
       }
       return acc;
