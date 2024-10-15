@@ -16,53 +16,49 @@ const RuleManager = dynamic(() => import('@/components/dashboard/rule-manager'),
 
 interface ConnectedAccount {
   access_token: string;
-  institution_name?: string;
 }
 
 export default function SettingsPage() {
   const { theme } = useTheme();
   const [clearMessage, setClearMessage] = useState('');
   const { toast } = useToast();
-  const [connectedAccount, setConnectedAccount] = useState<ConnectedAccount | null>(null);
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
-    fetchConnectedAccount();
+    fetchConnectedAccounts();
   }, []);
 
-  const fetchConnectedAccount = async () => {
+  const fetchConnectedAccounts = async () => {
     try {
       const response = await fetch('/api/plaid/get-access-token');
       if (!response.ok) {
-        throw new Error('Failed to fetch access token');
+        throw new Error('Failed to fetch access tokens');
       }
       const data = await response.json();
       
-      if (data.accessToken) {
-        setConnectedAccount({ access_token: data.accessToken });
-        // You might want to fetch the institution name using the Plaid API here
+      if (data.accessTokens && data.accessTokens.length > 0) {
+        setConnectedAccounts(data.accessTokens);
       } else {
-        setConnectedAccount(null);
+        setConnectedAccounts([]);
       }
     } catch (error) {
-      console.error('Error fetching connected account:', error);
+      console.error('Error fetching connected accounts:', error);
       toast({
         title: 'Error',
-        description: 'Failed to fetch connected account.',
+        description: 'Failed to fetch connected accounts.',
         variant: 'destructive',
       });
     }
   };
 
-  const handleRemoveAccount = async () => {
-    if (!connectedAccount) return;
-
+  const handleRemoveAccount = async (account: ConnectedAccount) => {
     try {
       // Remove the Plaid token from the database
       const { error } = await supabase
         .from('plaid_tokens')
         .delete()
-        .eq('access_token', connectedAccount.access_token);
+        .eq('access_token', account.access_token);
 
       if (error) throw error;
 
@@ -72,10 +68,10 @@ export default function SettingsPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ access_token: connectedAccount.access_token }),
+        body: JSON.stringify({ access_token: account.access_token }),
       });
 
-      setConnectedAccount(null);
+      setConnectedAccounts(connectedAccounts.filter(a => a.access_token !== account.access_token));
       toast({
         title: 'Success',
         description: 'Bank account removed successfully.',
@@ -146,13 +142,14 @@ export default function SettingsPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Error response:', errorData);
         throw new Error(`Failed to exchange token: ${errorData.error}`);
       }
 
       const data = await response.json();
-      console.log('Token exchange successful');
+      console.log('Token exchange response:', data);
 
-      await fetchConnectedAccount();
+      await fetchConnectedAccounts();
       toast({
         title: 'Success',
         description: 'Bank account connected successfully!',
@@ -167,15 +164,13 @@ export default function SettingsPage() {
     }
   };
 
-  const handleImportTransactions = async () => {
-    if (!connectedAccount) return;
-
+  const handleImportTransactions = async (account: ConnectedAccount) => {
     setIsImporting(true);
     try {
       const response = await fetch('/api/plaid/transactions', {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${connectedAccount.access_token}`,
+          'Authorization': `Bearer ${account.access_token}`,
         },
       });
 
@@ -216,24 +211,30 @@ export default function SettingsPage() {
 
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">Bank Account</h2>
-        {connectedAccount ? (
+        {connectedAccounts.length > 0 ? (
           <div className="bg-secondary p-4 rounded-md space-y-4">
-            <div className="flex items-center justify-between">
-              <span>{connectedAccount.institution_name || 'Bank Account Connected'}</span>
-              <Button
-                onClick={handleRemoveAccount}
-                variant="destructive"
-                size="sm"
-              >
-                Remove
-              </Button>
-            </div>
+            {connectedAccounts.map((account, index) => (
+              <div key={index} className="flex items-center justify-between mb-4">
+                <span>Connected Bank Account {index + 1}</span>
+                <Button
+                  onClick={() => handleRemoveAccount(account)}
+                  variant="destructive"
+                  size="sm"
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
             <Button
-              onClick={handleImportTransactions}
+              onClick={() => handleImportTransactions(connectedAccounts[0])}
               disabled={isImporting}
             >
               {isImporting ? 'Importing...' : 'Import Transactions'}
             </Button>
+            <div className="mt-4">
+              <p className="mb-2">Connect another bank account:</p>
+              <PlaidLinkComponent onSuccess={handlePlaidSuccess} />
+            </div>
           </div>
         ) : (
           <div>

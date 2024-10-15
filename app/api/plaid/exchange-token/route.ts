@@ -26,23 +26,31 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export async function POST(request: Request) {
   try {
     const { public_token } = await request.json();
+    console.log('Received public token:', public_token);
 
+    console.log('Exchanging public token for access token');
     const exchangeResponse = await plaidClient.itemPublicTokenExchange({
       public_token: public_token,
     });
 
     const accessToken = exchangeResponse.data.access_token;
+    const itemId = exchangeResponse.data.item_id;
+    console.log('Received access token and item ID');
 
-    // Store the access token in Supabase
-    const { error } = await supabase
+    console.log('Storing access token in Supabase');
+    const { data, error } = await supabase
       .from('plaid_tokens')
-      .upsert({ access_token: accessToken, user_id: 'current_user_id' }, { onConflict: 'user_id' });
+      .insert({ access_token: accessToken, user_id: 'current_user_id' });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
 
+    console.log('Access token stored successfully');
     return NextResponse.json({ message: 'Access token stored successfully' });
   } catch (error) {
-    console.error('Error exchanging token:', error);
+    console.error('Error in exchange-token route:', error);
     return NextResponse.json({ error: 'Failed to exchange token', details: error }, { status: 500 });
   }
 }
