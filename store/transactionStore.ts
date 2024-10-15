@@ -17,12 +17,21 @@ interface TransactionStore {
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
   plaidAccessToken: string | null;
   setPlaidAccessToken: (token: string) => void;
+  hasBeenCleared: boolean;
+  clearStore: () => void;
 }
+
+// Define initial state
+const initialState = {
+  transactions: [],
+  plaidAccessToken: null,
+  hasBeenCleared: false,
+};
 
 export const useTransactionStore = create<TransactionStore>()(
   persist(
     (set) => ({
-      transactions: [],
+      ...initialState,
       addTransactions: (newTransactions) =>
         set((state) => ({ transactions: [...state.transactions, ...newTransactions] })),
       updateTransaction: (id, updates) =>
@@ -31,12 +40,21 @@ export const useTransactionStore = create<TransactionStore>()(
             t.id === id ? { ...t, ...updates } : t
           ),
         })),
-      plaidAccessToken: null,
       setPlaidAccessToken: (token) => set({ plaidAccessToken: token }),
+      clearStore: () => set({ ...initialState, hasBeenCleared: true }),
     }),
     {
       name: 'transaction-store',
-      storage: createJSONStorage(() => (typeof window !== 'undefined' ? localStorage : null)),
+      storage: createJSONStorage(() => {
+        if (typeof window !== 'undefined') {
+          return localStorage;
+        }
+        return {
+          getItem: () => null,
+          setItem: () => {},
+          removeItem: () => {},
+        };
+      }),
     }
   )
 );
