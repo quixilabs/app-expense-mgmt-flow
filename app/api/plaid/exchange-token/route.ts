@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid';
+import { createClient } from '@supabase/supabase-js';
 
 const configuration = new Configuration({
-  basePath: PlaidEnvironments[process.env.PLAID_ENV as keyof typeof PlaidEnvironments],
+  basePath: PlaidEnvironments[process.env.PLAID_ENV || 'sandbox'],
   baseOptions: {
     headers: {
       'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
@@ -11,34 +12,37 @@ const configuration = new Configuration({
   },
 });
 
-const client = new PlaidApi(configuration);
+const plaidClient = new PlaidApi(configuration);
 
-export async function POST(req: NextRequest) {
-  console.log('Received request to exchange token');
-  
-  const body = await req.json();
-  console.log('Request body:', body);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const { public_token } = body;
-  
-  if (!public_token) {
-    console.error('Public token is missing from the request');
-    return NextResponse.json({ error: 'Public token is required' }, { status: 400 });
-  }
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
 
-  console.log('Public token received:', public_token);
+const supabase = createClient(supabaseUrl, supabaseKey);
 
+export async function POST(request: Request) {
   try {
-    console.log('Attempting to exchange public token with Plaid');
-    const response = await client.itemPublicTokenExchange({
+    const { public_token } = await request.json();
+
+    const exchangeResponse = await plaidClient.itemPublicTokenExchange({
       public_token: public_token,
     });
-    const { access_token, item_id } = response.data;
-    
-    console.log('Successfully exchanged public token. Item ID:', item_id);
-    return NextResponse.json({ success: true, access_token, item_id });
+
+    const accessToken = exchangeResponse.data.access_token;
+
+    // Store the access token in Supabase
+    const { error } = await supabase
+      .from('plaid_tokens')
+      .upsert({ access_token: accessToken, user_id: 'current_user_id' }, { onConflict: 'user_id' });
+
+    if (error) throw error;
+
+    return NextResponse.json({ message: 'Access token stored successfully' });
   } catch (error) {
-    console.error('Error exchanging public token:', error);
-    return NextResponse.json({ error: 'Error exchanging public token', details: error }, { status: 500 });
+    console.error('Error exchanging token:', error);
+    return NextResponse.json({ error: 'Failed to exchange token', details: error }, { status: 500 });
   }
 }

@@ -8,6 +8,7 @@ This project is built with Next.js, TypeScript, and uses Supabase for the backen
 - Yarn
 - Supabase account
 - Prisma CLI
+- Plaid
 
 ## Getting Started
 

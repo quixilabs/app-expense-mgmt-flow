@@ -12,21 +12,27 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET() {
   try {
+    console.log('Fetching access token from Supabase');
     const { data, error } = await supabase
       .from('plaid_tokens')
       .select('access_token')
       .eq('user_id', 'current_user_id')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
 
     if (data) {
+      console.log('Access token found');
       return NextResponse.json({ accessToken: data.access_token });
     } else {
+      console.log('No access token found');
       return NextResponse.json({ accessToken: null });
     }
   } catch (error) {
     console.error('Error fetching access token:', error);
-    return NextResponse.json({ error: 'Failed to fetch access token' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch access token', details: error }, { status: 500 });
   }
 }
