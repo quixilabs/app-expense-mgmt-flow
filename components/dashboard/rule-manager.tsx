@@ -76,13 +76,17 @@ function RuleManager() {
     }
   };
 
-  const handleEditRule = (id: string) => {
-    setEditingRule(id);
+  const handleEditRule = (rule: Rule) => {
+    setEditingRule(rule.id);
+    setNewRule({ pattern: rule.pattern, business_id: rule.business_id });
   };
 
   const handleUpdateRule = async (id: string) => {
     try {
-      const updatedRule = await updateRule(id, newRule);
+      const updatedRule = await updateRule(id, {
+        pattern: newRule.pattern,
+        business_id: newRule.business_id || undefined
+      });
       setRules(rules.map(r => r.id === id ? updatedRule : r));
       setEditingRule(null);
       setNewRule({ pattern: '', business_id: '' });
@@ -199,7 +203,7 @@ function RuleManager() {
                 <TableCell>
                   {editingRule === rule.id ? (
                     <Input
-                      value={newRule.pattern || rule.pattern}
+                      value={newRule.pattern}
                       onChange={(e) => setNewRule({ ...newRule, pattern: e.target.value })}
                     />
                   ) : (
@@ -209,7 +213,7 @@ function RuleManager() {
                 <TableCell>
                   {editingRule === rule.id ? (
                     <Select
-                      value={newRule.business_id || rule.business_id}
+                      value={newRule.business_id}
                       onValueChange={(value) => setNewRule({ ...newRule, business_id: value })}
                     >
                       <SelectTrigger className="w-[180px]">
@@ -232,7 +236,7 @@ function RuleManager() {
                     <Button onClick={() => handleUpdateRule(rule.id)}>Save</Button>
                   ) : (
                     <>
-                      <Button variant="outline" onClick={() => handleEditRule(rule.id)}>Edit</Button>
+                      <Button variant="outline" onClick={() => handleEditRule(rule)}>Edit</Button>
                       <Button variant="destructive" onClick={() => handleRemoveRule(rule)}>Remove</Button>
                       <Button variant="secondary" onClick={() => handleApplyRule(rule)}>Apply to Transactions</Button>
                     </>

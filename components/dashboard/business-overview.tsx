@@ -12,7 +12,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { getTransactions, Transaction } from '@/utils/storeUtils';
+import { getTransactions, getBusinesses, Transaction, Business } from '@/utils/storeUtils';
 
 ChartJS.register(
   CategoryScale,
@@ -24,6 +24,7 @@ ChartJS.register(
 );
 
 interface BusinessData {
+  id: string;
   name: string;
   expenses: number;
   income: number;
@@ -31,49 +32,60 @@ interface BusinessData {
 
 export function BusinessOverview() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
   const [businessData, setBusinessData] = useState<BusinessData[]>([]);
 
   useEffect(() => {
-    async function fetchTransactions() {
+    async function fetchData() {
       try {
-        const data = await getTransactions();
-        setTransactions(data);
+        const [transactionData, businessData] = await Promise.all([
+          getTransactions(),
+          getBusinesses()
+        ]);
+        setTransactions(transactionData);
+        setBusinesses(businessData);
       } catch (error) {
-        console.error('Failed to fetch transactions:', error);
+        console.error('Failed to fetch data:', error);
       }
     }
 
-    fetchTransactions();
+    fetchData();
   }, []);
 
   useEffect(() => {
+    const businessMap = new Map(businesses.map(b => [b.id, b.name]));
     const businessTotals = transactions.reduce((acc, transaction) => {
-      if (transaction.businessId) {
-        if (!acc[transaction.businessId]) {
-          acc[transaction.businessId] = { expenses: 0, income: 0 };
+      if (transaction.business_id) {
+        if (!acc[transaction.business_id]) {
+          acc[transaction.business_id] = { 
+            id: transaction.business_id,
+            name: businessMap.get(transaction.business_id) || 'Unknown Business',
+            expenses: 0, 
+            income: 0 
+          };
         }
         if (Number(transaction.amount) < 0) {
-          acc[transaction.businessId].expenses += Math.abs(Number(transaction.amount));
+          acc[transaction.business_id].expenses += Math.abs(Number(transaction.amount));
         } else {
-          acc[transaction.businessId].income += Number(transaction.amount);
+          acc[transaction.business_id].income += Number(transaction.amount);
         }
       }
       return acc;
-    }, {} as Record<string, { expenses: number; income: number }>);
+    }, {} as Record<string, BusinessData>);
 
-    const formattedData = Object.entries(businessTotals).map(([name, data]) => ({
-      name,
+    const formattedData = Object.values(businessTotals).map(data => ({
+      ...data,
       expenses: parseFloat(data.expenses.toFixed(2)),
       income: parseFloat(data.income.toFixed(2)),
     }));
 
     setBusinessData(formattedData);
-  }, [transactions]);
+  }, [transactions, businesses]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {businessData.map((business) => (
-        <Card key={business.name}>
+        <Card key={business.id}>
           <CardHeader>
             <CardTitle>{business.name}</CardTitle>
           </CardHeader>
