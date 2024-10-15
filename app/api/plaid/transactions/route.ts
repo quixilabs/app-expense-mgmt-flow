@@ -25,11 +25,13 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('Authorization');
+  console.log('Received auth header:', authHeader);
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Access token is required' }, { status: 400 });
   }
 
   const accessToken = authHeader.split(' ')[1];
+  console.log('Extracted access token:', accessToken);
 
   try {
     let allTransactions = [];
@@ -37,10 +39,13 @@ export async function GET(request: NextRequest) {
     let cursor = null;
 
     while (hasMore) {
+      console.log('Fetching transactions from Plaid, cursor:', cursor);
       const response = await plaidClient.transactionsSync({
         access_token: accessToken,
         cursor: cursor,
       });
+
+      console.log('Plaid response:', response.data);
 
       allTransactions = allTransactions.concat(response.data.added);
       hasMore = response.data.has_more;
@@ -52,9 +57,10 @@ export async function GET(request: NextRequest) {
         .upsert({ user_id: 'current_user_id', cursor: cursor }, { onConflict: 'user_id' });
     }
 
+    console.log('All transactions fetched:', allTransactions.length);
     return NextResponse.json({ transactions: allTransactions });
   } catch (error) {
     console.error('Error fetching Plaid transactions:', error);
-    return NextResponse.json({ error: 'Failed to fetch transactions' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch transactions', details: error }, { status: 500 });
   }
 }

@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     const itemId = exchangeResponse.data.item_id;
     console.log('Received access token and item ID');
 
-    console.log('Storing access token in Supabase');
+    console.log('Storing access token in Supabase:', accessToken);
     const { data, error } = await supabase
       .from('plaid_tokens')
       .insert({ access_token: accessToken, user_id: 'current_user_id' });

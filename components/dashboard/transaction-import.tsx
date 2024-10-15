@@ -21,24 +21,32 @@ function TransactionImport() {
   const { toast } = useToast();
   const [isExchangingToken, setIsExchangingToken] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [isTokenValid, setIsTokenValid] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    const fetchAccessToken = async () => {
-      try {
-        const response = await fetch('/api/plaid/get-access-token');
-        if (response.ok) {
-          const data = await response.json();
-          setAccessToken(data.accessToken);
-          setIsConnected(true);
-        }
-      } catch (error) {
-        console.error('Error fetching access token:', error);
-      }
-    };
-
-    fetchAccessToken();
+    verifyAccessToken();
   }, []);
+
+  const verifyAccessToken = async () => {
+    try {
+      const response = await fetch('/api/plaid/verify-token');
+      if (response.ok) {
+        const data = await response.json();
+        setAccessToken(data.accessToken);
+        setIsTokenValid(true);
+        setIsConnected(true);
+      } else {
+        console.error('Failed to verify access token:', await response.text());
+        setIsTokenValid(false);
+        setIsConnected(false);
+      }
+    } catch (error) {
+      console.error('Error verifying access token:', error);
+      setIsTokenValid(false);
+      setIsConnected(false);
+    }
+  };
 
   /**
    * Handles file selection change event.
@@ -79,27 +87,8 @@ function TransactionImport() {
       const data = await response.json();
       console.log('Received data from exchange token:', data);
 
-      // Store the access token
-      const storeResponse = await fetch('/api/plaid/store-access-token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ accessToken: data.access_token }),
-      });
+      await verifyAccessToken(); // Verify the token after exchange
 
-      if (!storeResponse.ok) {
-        const storeErrorData = await storeResponse.json();
-        console.error('Error storing access token:', storeErrorData);
-        throw new Error(`Failed to store access token: ${storeErrorData.error}`);
-      }
-
-      const storeData = await storeResponse.json();
-      console.log('Store access token response:', storeData);
-
-      setAccessToken(data.access_token);
-      setIsConnected(true);
-      router.refresh(); // Refresh the page to update the UI
       toast({
         title: 'Success',
         description: 'Bank account connected successfully!',
@@ -119,12 +108,15 @@ function TransactionImport() {
   const fetchPlaidTransactions = async () => {
     try {
       setIsImporting(true);
+      console.log('Fetching Plaid transactions, access token:', accessToken);
       const response = await fetch('/api/plaid/transactions', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },
       });
+      
+      console.log('Plaid transactions response status:', response.status);
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -135,6 +127,15 @@ function TransactionImport() {
       const data = await response.json();
       console.log('Fetched Plaid transactions:', data);
 
+      if (!data.transactions || data.transactions.length === 0) {
+        console.log('No transactions returned from Plaid');
+        toast({
+          title: 'No Transactions',
+          description: 'No transactions were found for this account.',
+        });
+        return;
+      }
+
       const plaidTransactions = data.transactions.map((transaction: any) => ({
         date: new Date(transaction.date),
         description: transaction.name,
@@ -143,6 +144,8 @@ function TransactionImport() {
         amount: transaction.amount,
         businessId: null,
       }));
+
+      console.log('Mapped Plaid transactions:', plaidTransactions);
 
       // Use a batch insert approach for better performance
       const batchSize = 100;
@@ -273,7 +276,7 @@ function TransactionImport() {
       </Button>
       <div className="mt-8">
         <h3 className="text-lg font-semibold mb-2">Connect Bank Account</h3>
-        {!isConnected ? (
+        {!isTokenValid ? (
           <PlaidLinkComponent onSuccess={handlePlaidSuccess} />
         ) : (
           <div>

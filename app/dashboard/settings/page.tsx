@@ -88,40 +88,24 @@ export default function SettingsPage() {
 
   const handleClearStore = async () => {
     try {
-      // Clear transactions
+      // Clear only transactions
       const { error: transactionError } = await supabase
         .from('transactions')
         .delete()
-        .not('id', 'is', null); // This deletes all rows
+        .not('id', 'is', null); // This deletes all rows in the transactions table
 
       if (transactionError) throw transactionError;
 
-      // Clear rules
-      const { error: ruleError } = await supabase
-        .from('rules')
-        .delete()
-        .not('id', 'is', null);
-
-      if (ruleError) throw ruleError;
-
-      // Clear businesses
-      const { error: businessError } = await supabase
-        .from('businesses')
-        .delete()
-        .not('id', 'is', null);
-
-      if (businessError) throw businessError;
-
-      setClearMessage('All data cleared successfully!');
+      setClearMessage('All transaction data cleared successfully!');
       toast({
         title: 'Success',
-        description: 'All data has been cleared from the database.',
+        description: 'All transaction data has been cleared from the database.',
       });
     } catch (error) {
-      console.error('Failed to clear data:', error);
+      console.error('Failed to clear transaction data:', error);
       toast({
         title: 'Error',
-        description: 'Failed to clear data. Please try again.',
+        description: 'Failed to clear transaction data. Please try again.',
         variant: 'destructive',
       });
     }
@@ -248,7 +232,7 @@ export default function SettingsPage() {
         <h2 className="text-2xl font-semibold mb-4">Data Management</h2>
         <div className="flex flex-col space-y-4">
           <Button onClick={handleClearStore} variant="destructive">
-            Clear All Data
+            Clear Transaction Data
           </Button>
           {clearMessage && (
             <p className="text-green-500 font-semibold">{clearMessage}</p>
