@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid';
+import { createClient } from '@supabase/supabase-js';
 
 const configuration = new Configuration({
-  basePath: PlaidEnvironments[process.env.PLAID_ENV || 'sandbox'],
+  basePath: PlaidEnvironments[process.env.PLAID_ENV as keyof typeof PlaidEnvironments],
   baseOptions: {
     headers: {
       'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
@@ -11,38 +12,49 @@ const configuration = new Configuration({
   },
 });
 
-const client = new PlaidApi(configuration);
+const plaidClient = new PlaidApi(configuration);
 
-export async function GET(req: NextRequest) {
-  console.log('Received request to fetch Plaid transactions');
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+export async function GET(request: NextRequest) {
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return NextResponse.json({ error: 'Access token is required' }, { status: 400 });
+  }
+
+  const accessToken = authHeader.split(' ')[1];
+
   try {
-    const plaidAccessToken = req.headers.get('X-Plaid-Access-Token');
-    console.log('Plaid access token from header:', plaidAccessToken);
+    let allTransactions = [];
+    let hasMore = true;
+    let cursor = null;
 
-    if (!plaidAccessToken) {
-      console.error('Access token is missing');
-      return NextResponse.json({ error: 'Access token is required' }, { status: 400 });
+    while (hasMore) {
+      const response = await plaidClient.transactionsSync({
+        access_token: accessToken,
+        cursor: cursor,
+      });
+
+      allTransactions = allTransactions.concat(response.data.added);
+      hasMore = response.data.has_more;
+      cursor = response.data.next_cursor;
+
+      // Store the cursor for future syncs
+      await supabase
+        .from('plaid_sync_cursors')
+        .upsert({ user_id: 'current_user_id', cursor: cursor }, { onConflict: 'user_id' });
     }
 
-    const now = new Date();
-    const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-    const startDate = oneYearAgo.toISOString().split('T')[0];
-    const endDate = now.toISOString().split('T')[0];
-
-    console.log('Fetching transactions from Plaid API');
-    console.log('Start date:', startDate);
-    console.log('End date:', endDate);
-
-    const response = await client.transactionsGet({
-      access_token: plaidAccessToken,
-      start_date: startDate,
-      end_date: endDate,
-    });
-
-    console.log('Successfully fetched transactions from Plaid');
-    return NextResponse.json(response.data);
+    return NextResponse.json({ transactions: allTransactions });
   } catch (error) {
     console.error('Error fetching Plaid transactions:', error);
-    return NextResponse.json({ error: 'Failed to fetch transactions', details: error }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch transactions' }, { status: 500 });
   }
 }

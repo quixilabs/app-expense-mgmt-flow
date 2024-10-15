@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/use-toast';
 import Papa from 'papaparse';
 import { addTransaction, Transaction } from '@/utils/storeUtils';
 import PlaidLinkComponent from './plaid-link';
+import { useRouter } from 'next/navigation';
 
 /**
  * TransactionImport component allows users to import transactions from a CSV file.
@@ -19,6 +20,25 @@ function TransactionImport() {
   const [isConnected, setIsConnected] = useState(false);
   const { toast } = useToast();
   const [isExchangingToken, setIsExchangingToken] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    const fetchAccessToken = async () => {
+      try {
+        const response = await fetch('/api/plaid/get-access-token');
+        if (response.ok) {
+          const data = await response.json();
+          setAccessToken(data.accessToken);
+          setIsConnected(true);
+        }
+      } catch (error) {
+        console.error('Error fetching access token:', error);
+      }
+    };
+
+    fetchAccessToken();
+  }, []);
 
   /**
    * Handles file selection change event.
@@ -59,17 +79,27 @@ function TransactionImport() {
       const data = await response.json();
       console.log('Received data from exchange token:', data);
 
-      // Store the access token securely (e.g., in your database)
-      // You might want to create a new API route to store this token securely
-      await fetch('/api/store-plaid-token', {
+      // Store the access token
+      const storeResponse = await fetch('/api/plaid/store-access-token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ access_token: data.access_token }),
+        body: JSON.stringify({ accessToken: data.access_token }),
       });
 
+      if (!storeResponse.ok) {
+        const storeErrorData = await storeResponse.json();
+        console.error('Error storing access token:', storeErrorData);
+        throw new Error(`Failed to store access token: ${storeErrorData.error}`);
+      }
+
+      const storeData = await storeResponse.json();
+      console.log('Store access token response:', storeData);
+
+      setAccessToken(data.access_token);
       setIsConnected(true);
+      router.refresh(); // Refresh the page to update the UI
       toast({
         title: 'Success',
         description: 'Bank account connected successfully!',
@@ -78,7 +108,7 @@ function TransactionImport() {
       console.error('Error connecting bank account:', error);
       toast({
         title: 'Error',
-        description: 'Failed to connect bank account',
+        description: error instanceof Error ? error.message : 'Failed to connect bank account',
         variant: 'destructive',
       });
     } finally {
@@ -91,6 +121,9 @@ function TransactionImport() {
       setIsImporting(true);
       const response = await fetch('/api/plaid/transactions', {
         method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
       });
       
       if (!response.ok) {
@@ -111,8 +144,11 @@ function TransactionImport() {
         businessId: null,
       }));
 
-      for (const transaction of plaidTransactions) {
-        await addTransaction(transaction);
+      // Use a batch insert approach for better performance
+      const batchSize = 100;
+      for (let i = 0; i < plaidTransactions.length; i += batchSize) {
+        const batch = plaidTransactions.slice(i, i + batchSize);
+        await Promise.all(batch.map(addTransaction));
       }
 
       toast({
@@ -244,7 +280,7 @@ function TransactionImport() {
             <p className="text-green-600 mb-2">Bank account connected successfully!</p>
             <Button 
               onClick={fetchPlaidTransactions} 
-              disabled={isImporting || isExchangingToken}
+              disabled={isImporting || isExchangingToken || !accessToken}
             >
               {isImporting ? 'Importing...' : 'Import Plaid Transactions'}
             </Button>
