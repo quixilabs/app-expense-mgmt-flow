@@ -12,6 +12,7 @@ import { ChevronUpIcon, ChevronDownIcon } from '@radix-ui/react-icons';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { getTransactions, deleteTransaction, updateTransaction, getBusinesses, addBusiness, Transaction, Business } from '@/utils/storeUtils';
 import { getRules, addRule, Rule } from '@/store/ruleStore';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // Update the SortField type to include the new sortable fields
 type SortField = 'date' | 'description' | 'amount' | 'businessId' | 'cardMember' | 'accountNumber';
@@ -35,6 +36,7 @@ const TransactionList = () => {
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
   const [newRule, setNewRule] = useState({ pattern: '', business_id: '' });
   const [recentBusinessAssignments, setRecentBusinessAssignments] = useState<Array<{ description: string, business_id: string }>>([]);
+  const [selectedTransactions, setSelectedTransactions] = useState<string[]>([]);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -100,8 +102,6 @@ const TransactionList = () => {
       const updatedTransaction = await updateTransaction(transactionId, { business_id: newBusinessId });
       setTransactions(transactions.map(t => t.id === transactionId ? updatedTransaction : t));
       
-      // Remove this line as it's redundant
-      // const updatedTransaction = transactions.find(t => t.id === transactionId);
       if (updatedTransaction) {
         // Add this assignment to recent business assignments
         setRecentBusinessAssignments(prev => [
@@ -114,6 +114,7 @@ const TransactionList = () => {
         
         if (similarTransactions.length > 0) {
           setSuggestedTransactions(similarTransactions.map(t => t.id));
+          setSelectedTransactions(similarTransactions.map(t => t.id)); // Initially select all similar transactions
           setNewRule({ 
             pattern: findCommonPattern(updatedTransaction.description, similarTransactions[0].description),
             business_id: newBusinessId 
@@ -312,18 +313,28 @@ const TransactionList = () => {
     transaction.description.toLowerCase().includes(filterText.toLowerCase())
   );
 
+  const handleTransactionSelection = (transactionId: string) => {
+    setSelectedTransactions(prev => 
+      prev.includes(transactionId)
+        ? prev.filter(id => id !== transactionId)
+        : [...prev, transactionId]
+    );
+  };
+
   const handleApplyRule = async () => {
     try {
       const addedRule = await addRule(newRule);
       setRules([...rules, addedRule]);
-      suggestedTransactions.forEach(id => {
-        updateTransaction(id, { business_id: newRule.business_id });
-      });
+      for (const id of selectedTransactions) {
+        await updateTransaction(id, { business_id: newRule.business_id });
+      }
       setIsRuleDialogOpen(false);
       setSuggestedTransactions([]);
+      setSelectedTransactions([]);
+      await fetchData(); // Refresh the transaction list
       toast({
         title: 'Rule Applied',
-        description: `Applied ${newRule.business_id} to ${suggestedTransactions.length} transactions and saved the rule.`,
+        description: `Applied ${newRule.business_id} to ${selectedTransactions.length} transactions and saved the rule.`,
       });
     } catch (error) {
       console.error('Failed to apply rule:', error);
@@ -475,15 +486,22 @@ const TransactionList = () => {
           </DialogHeader>
           <div className="space-y-4">
             <p>
-              Do you want to apply "{newRule.business_id}" to {suggestedTransactions.length} similar transactions?
+              Select transactions to apply "{businesses.find(b => b.id === newRule.business_id)?.name}" to:
             </p>
             <p>Pattern: "{newRule.pattern}"</p>
-            <ScrollArea className="h-[200px] w-full rounded-md border p-4">
+            <ScrollArea className="h-[300px] w-full rounded-md border p-4">
               {suggestedTransactions.map(id => {
                 const transaction = transactions.find(t => t.id === id);
                 return transaction ? (
-                  <div key={id} className="py-1">
-                    {transaction.date} - {transaction.description} - ${Math.abs(transaction.amount).toFixed(2)}
+                  <div key={id} className="flex items-center space-x-2 py-2">
+                    <Checkbox
+                      id={id}
+                      checked={selectedTransactions.includes(id)}
+                      onCheckedChange={() => handleTransactionSelection(id)}
+                    />
+                    <label htmlFor={id} className="text-sm">
+                      {new Date(transaction.date).toLocaleDateString()} - {transaction.description} - ${Math.abs(Number(transaction.amount)).toFixed(2)}
+                    </label>
                   </div>
                 ) : null;
               })}

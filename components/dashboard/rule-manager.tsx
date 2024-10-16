@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getRules, addRule, removeRule, updateRule, Rule } from '@/store/ruleStore';
 import { getTransactions, updateTransaction, getBusinesses, Transaction, Business } from '@/utils/storeUtils';
+import { Checkbox } from '@/components/ui/checkbox';
 
 function RuleManager() {
   const [rules, setRules] = useState<Rule[]>([]);
@@ -22,6 +23,7 @@ function RuleManager() {
   const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);
   const [currentRule, setCurrentRule] = useState<Rule | null>(null);
   const [matchingTransactions, setMatchingTransactions] = useState<Transaction[]>([]);
+  const [selectedTransactions, setSelectedTransactions] = useState<string[]>([]);
 
   useEffect(() => {
     fetchRules();
@@ -136,10 +138,11 @@ function RuleManager() {
   const handleApplyRule = (rule: Rule) => {
     setCurrentRule(rule);
     const matching = transactions.filter(t => 
-      t.description.toLowerCase().startsWith(rule.pattern.toLowerCase()) && 
+      t.description.toLowerCase().includes(rule.pattern.toLowerCase()) && 
       (!t.business_id || t.business_id !== rule.business_id)
     );
     setMatchingTransactions(matching);
+    setSelectedTransactions(matching.map(t => t.id));
     setIsApplyDialogOpen(true);
   };
 
@@ -147,19 +150,29 @@ function RuleManager() {
     if (currentRule) {
       try {
         for (const t of matchingTransactions) {
-          await updateTransaction(t.id, { business_id: currentRule.business_id });
+          if (selectedTransactions.includes(t.id)) {
+            await updateTransaction(t.id, { business_id: currentRule.business_id });
+          }
         }
         await fetchTransactions();
         setIsApplyDialogOpen(false);
         toast({
           title: 'Rule Applied',
-          description: `Applied "${currentRule.business_id}" to ${matchingTransactions.length} transactions.`,
+          description: `Applied "${currentRule.business_id}" to ${selectedTransactions.length} transactions.`,
         });
       } catch (error) {
         console.error('Failed to apply rule:', error);
         toast({ title: 'Error', description: 'Failed to apply rule.', variant: 'destructive' });
       }
     }
+  };
+
+  const handleTransactionSelection = (transactionId: string) => {
+    setSelectedTransactions(prev => 
+      prev.includes(transactionId)
+        ? prev.filter(id => id !== transactionId)
+        : [...prev, transactionId]
+    );
   };
 
   return (
@@ -255,20 +268,27 @@ function RuleManager() {
           </DialogHeader>
           <div className="space-y-4">
             <p>
-              Do you want to apply "{businesses.find(b => b.id === currentRule?.business_id)?.name}" to {matchingTransactions.length} matching transactions?
+              Select transactions to apply "{businesses.find(b => b.id === currentRule?.business_id)?.name}" to:
             </p>
             <p>Pattern: "{currentRule?.pattern}"</p>
-            <ScrollArea className="h-[200px] w-full rounded-md border p-4">
+            <ScrollArea className="h-[300px] w-full rounded-md border p-4">
               {matchingTransactions.map(t => (
-                <div key={t.id} className="py-1">
-                  {new Date(t.date).toLocaleDateString()} - {t.description} - ${Math.abs(Number(t.amount)).toFixed(2)}
+                <div key={t.id} className="flex items-center space-x-2 py-2">
+                  <Checkbox
+                    id={t.id}
+                    checked={selectedTransactions.includes(t.id)}
+                    onCheckedChange={() => handleTransactionSelection(t.id)}
+                  />
+                  <label htmlFor={t.id} className="text-sm">
+                    {new Date(t.date).toLocaleDateString()} - {t.description} - ${Math.abs(Number(t.amount)).toFixed(2)}
+                  </label>
                 </div>
               ))}
             </ScrollArea>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsApplyDialogOpen(false)}>Cancel</Button>
-            <Button onClick={confirmApplyRule}>Apply Rule</Button>
+            <Button onClick={confirmApplyRule}>Apply Rule to Selected</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
