@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useToast } from '@/components/ui/use-toast';
 import PlaidLinkComponent from '@/components/dashboard/plaid-link';
+import { applyRulesToTransactions } from '@/store/ruleStore';
 
 const RuleManager = dynamic(() => import('@/components/dashboard/rule-manager'), {
   ssr: false,
@@ -165,9 +166,16 @@ export default function SettingsPage() {
       const data = await response.json();
       console.log('Fetched transactions:', data);
 
+      // Apply rules to the fetched transactions
+      const processedTransactions = await applyRulesToTransactions(data.transactions);
+
+      // Here, you would save the processedTransactions to your database
+      // For example:
+      // await saveTransactionsToDatabase(processedTransactions);
+
       toast({
         title: 'Success',
-        description: `Imported ${data.transactions.length} transactions`,
+        description: `Imported and processed ${processedTransactions.length} transactions`,
       });
     } catch (error) {
       console.error('Error importing transactions:', error);
@@ -241,7 +249,6 @@ export default function SettingsPage() {
       </section>
 
       <section className="mb-8">
-        <h2 className="text-2xl font-semibold mb-4">Rule Manager</h2>
         <RuleManager />
       </section>
 

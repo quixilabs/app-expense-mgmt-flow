@@ -136,7 +136,7 @@ function RuleManager() {
   const handleApplyRule = (rule: Rule) => {
     setCurrentRule(rule);
     const matching = transactions.filter(t => 
-      t.description.toLowerCase().includes(rule.pattern.toLowerCase()) && 
+      t.description.toLowerCase().startsWith(rule.pattern.toLowerCase()) && 
       (!t.business_id || t.business_id !== rule.business_id)
     );
     setMatchingTransactions(matching);
