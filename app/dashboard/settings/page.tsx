@@ -9,6 +9,7 @@ import { supabase } from '@/utils/supabase';
 import { useToast } from '@/components/ui/use-toast';
 import PlaidLinkComponent from '@/components/dashboard/plaid-link';
 import { applyRulesToTransactions } from '@/store/ruleStore';
+import BusinessManager from '@/components/dashboard/business-manager';
 
 const RuleManager = dynamic(() => import('@/components/dashboard/rule-manager'), {
   ssr: false,
@@ -249,7 +250,13 @@ export default function SettingsPage() {
       </section>
 
       <section className="mb-8">
+        <h2 className="text-2xl font-semibold mb-4">Rule Management</h2>
         <RuleManager />
+      </section>
+
+      <section className="mb-8">
+        <h2 className="text-2xl font-semibold mb-4">Business Management</h2>
+        <BusinessManager />
       </section>
 
       {/* Add other settings sections here */}
