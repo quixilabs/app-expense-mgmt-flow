@@ -6,14 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import Papa from 'papaparse';
-import { addTransaction, Transaction } from '@/utils/storeUtils';
+import { addTransaction, Transaction, getBusinesses, Business } from '@/utils/storeUtils';
 import PlaidLinkComponent from './plaid-link';
 import { useRouter } from 'next/navigation';
+import { getRules, Rule, applyRulesToTransactions } from '@/store/ruleStore';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 
-/**
- * TransactionImport component allows users to import transactions from a CSV file.
- * It uses Papa Parse for CSV parsing and Zustand for state management.
- */
 function TransactionImport() {
   const [file, setFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -23,6 +22,33 @@ function TransactionImport() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isTokenValid, setIsTokenValid] = useState(false);
   const router = useRouter();
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [isBusinessDialogOpen, setIsBusinessDialogOpen] = useState(false);
+  const [importType, setImportType] = useState<'csv' | 'plaid' | null>(null);
+
+  useEffect(() => {
+    const fetchBusinessesAndRules = async () => {
+      try {
+        const [fetchedBusinesses, fetchedRules] = await Promise.all([
+          getBusinesses(),
+          getRules()
+        ]);
+        setBusinesses(fetchedBusinesses);
+        setRules(fetchedRules);
+      } catch (error) {
+        console.error('Error fetching businesses and rules:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch businesses and rules.',
+          variant: 'destructive',
+        });
+      }
+    };
+
+    fetchBusinessesAndRules();
+  }, []);
 
   useEffect(() => {
     verifyAccessToken();
@@ -105,6 +131,26 @@ function TransactionImport() {
     }
   };
 
+  const processTransactions = async (transactions: any[]) => {
+    console.log('Processing transactions. Selected Business ID:', selectedBusinessId);
+    console.log('Initial transactions:', transactions);
+
+    const processedTransactions = await applyRulesToTransactions(transactions);
+    console.log('Transactions after applying rules:', processedTransactions);
+    
+    const finalTransactions = processedTransactions.map(transaction => {
+      const finalTransaction = {
+        ...transaction,
+        business_id: transaction.business_id || selectedBusinessId || null
+      };
+      console.log('Processed transaction:', finalTransaction);
+      return finalTransaction;
+    });
+
+    console.log('Final processed transactions:', finalTransactions);
+    return finalTransactions;
+  };
+
   const fetchPlaidTransactions = async () => {
     try {
       setIsImporting(true);
@@ -139,24 +185,29 @@ function TransactionImport() {
       const plaidTransactions = data.transactions.map((transaction: any) => ({
         date: new Date(transaction.date),
         description: transaction.name,
-        cardMember: '', // Plaid doesn't provide this information
-        accountNumber: transaction.account_id,
+        card_member: '', // Plaid doesn't provide this information
+        account_number: transaction.account_id,
         amount: transaction.amount,
-        businessId: null,
+        business_id: null,
       }));
 
-      console.log('Mapped Plaid transactions:', plaidTransactions);
+      console.log('Plaid transactions before processing:', plaidTransactions);
+
+      const processedTransactions = await processTransactions(plaidTransactions);
+
+      console.log('Processed Plaid transactions before adding to database:', processedTransactions);
 
       // Use a batch insert approach for better performance
       const batchSize = 100;
-      for (let i = 0; i < plaidTransactions.length; i += batchSize) {
-        const batch = plaidTransactions.slice(i, i + batchSize);
+      for (let i = 0; i < processedTransactions.length; i += batchSize) {
+        const batch = processedTransactions.slice(i, i + batchSize);
+        console.log(`Adding batch ${i / batchSize + 1} to database:`, batch);
         await Promise.all(batch.map(addTransaction));
       }
 
       toast({
         title: 'Import Successful',
-        description: `Imported ${plaidTransactions.length} transactions from Plaid`,
+        description: `Imported ${processedTransactions.length} transactions from Plaid`,
       });
 
       window.dispatchEvent(new Event('transactionsUpdated'));
@@ -172,10 +223,18 @@ function TransactionImport() {
     }
   };
 
-  /**
-   * Handles the import process of the CSV file.
-   */
-  const handleImport = async () => {
+  const handleImportWithBusinessAssignment = async () => {
+    console.log('Starting import with business assignment. Type:', importType);
+    console.log('Selected Business ID:', selectedBusinessId);
+    setIsBusinessDialogOpen(false);
+    if (importType === 'csv') {
+      await handleCsvImport();
+    } else if (importType === 'plaid') {
+      await fetchPlaidTransactions();
+    }
+  };
+
+  const handleCsvImport = async () => {
     if (!file) {
       toast({
         title: 'Error',
@@ -197,13 +256,13 @@ function TransactionImport() {
             .map((row) => ({
               date: new Date(row[0]),
               description: row[2],
-              cardMember: row[3],
-              accountNumber: row[4],
+              card_member: row[3],
+              account_number: row[4],
               amount: parseFloat(row[5]),
-              businessId: null,
+              business_id: null,
             }));
 
-          console.log('Mapped transactions:', transactions);
+          console.log('Mapped transactions before processing:', transactions);
 
           const validTransactions = transactions.filter(transaction => 
             transaction.date && 
@@ -211,10 +270,14 @@ function TransactionImport() {
             !isNaN(transaction.amount)
           ) as Omit<Transaction, 'id'>[];
 
-          console.log('Valid transactions:', validTransactions);
+          console.log('Valid transactions before processing:', validTransactions);
 
-          for (const transaction of validTransactions) {
-            console.log('Adding transaction:', transaction);
+          const processedTransactions = await processTransactions(validTransactions);
+
+          console.log('Processed transactions before adding to database:', processedTransactions);
+
+          for (const transaction of processedTransactions) {
+            console.log('Adding transaction to database:', transaction);
             try {
               const addedTransaction = await addTransaction(transaction);
               console.log('Transaction added successfully:', addedTransaction);
@@ -225,7 +288,7 @@ function TransactionImport() {
 
           toast({
             title: 'Import Successful',
-            description: `Imported ${validTransactions.length} transactions from CSV`,
+            description: `Imported ${processedTransactions.length} transactions from CSV`,
           });
 
           setFile(null);
@@ -255,6 +318,16 @@ function TransactionImport() {
     });
   };
 
+  const handleImport = () => {
+    setImportType('csv');
+    setIsBusinessDialogOpen(true);
+  };
+
+  const handlePlaidImport = () => {
+    setImportType('plaid');
+    setIsBusinessDialogOpen(true);
+  };
+
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold">Import Transactions</h2>
@@ -282,7 +355,7 @@ function TransactionImport() {
           <div>
             <p className="text-green-600 mb-2">Bank account connected successfully!</p>
             <Button 
-              onClick={fetchPlaidTransactions} 
+              onClick={handlePlaidImport} 
               disabled={isImporting || isExchangingToken || !accessToken}
             >
               {isImporting ? 'Importing...' : 'Import Plaid Transactions'}
@@ -290,6 +363,39 @@ function TransactionImport() {
           </div>
         )}
       </div>
+
+      <Dialog open={isBusinessDialogOpen} onOpenChange={setIsBusinessDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign Business to Transactions</DialogTitle>
+            <DialogDescription>
+              Would you like to assign all imported transactions to a specific business?
+            </DialogDescription>
+          </DialogHeader>
+          <Select
+            value={selectedBusinessId || ''}
+            onValueChange={(value) => setSelectedBusinessId(value === '' ? null : value)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select business (optional)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">None</SelectItem>
+              {businesses.map((business) => (
+                <SelectItem key={business.id} value={business.id}>
+                  {business.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsBusinessDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleImportWithBusinessAssignment}>
+              Import {importType === 'csv' ? 'CSV' : 'Plaid'} Transactions
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
