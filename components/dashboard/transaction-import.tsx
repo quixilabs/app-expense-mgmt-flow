@@ -132,22 +132,22 @@ function TransactionImport() {
   };
 
   const processTransactions = async (transactions: any[]) => {
-    console.log('Processing transactions. Selected Business ID:', selectedBusinessId);
-    console.log('Initial transactions:', transactions);
+    // console.log('Processing transactions. Selected Business ID:', selectedBusinessId);
+    // console.log('Initial transactions:', transactions);
 
     const processedTransactions = await applyRulesToTransactions(transactions);
-    console.log('Transactions after applying rules:', processedTransactions);
+    // console.log('Transactions after applying rules:', processedTransactions);
     
     const finalTransactions = processedTransactions.map(transaction => {
       const finalTransaction = {
         ...transaction,
         business_id: transaction.business_id || selectedBusinessId || null
       };
-      console.log('Processed transaction:', finalTransaction);
+      // console.log('Processed transaction:', finalTransaction);
       return finalTransaction;
     });
 
-    console.log('Final processed transactions:', finalTransactions);
+    // console.log('Final processed transactions:', finalTransactions);
     return finalTransactions;
   };
 
@@ -171,7 +171,7 @@ function TransactionImport() {
       }
 
       const data = await response.json();
-      console.log('Fetched Plaid transactions:', data);
+      // console.log('Fetched Plaid transactions:', data);
 
       if (!data.transactions || data.transactions.length === 0) {
         console.log('No transactions returned from Plaid');

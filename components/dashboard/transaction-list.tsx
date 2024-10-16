@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
-import { ChevronUpIcon, ChevronDownIcon } from '@radix-ui/react-icons';
+import { ChevronUp, ChevronDown, ThumbsUp, Check } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { getTransactions, deleteTransaction, updateTransaction, getBusinesses, addBusiness, Transaction, Business } from '@/utils/storeUtils';
 import { getRules, addRule, Rule } from '@/store/ruleStore';
@@ -253,7 +253,7 @@ const TransactionList = () => {
 
   const renderSortIcon = (field: SortField) => {
     if (sortField === field) {
-      return sortOrder === 'asc' ? <ChevronUpIcon className="inline ml-1" /> : <ChevronDownIcon className="inline ml-1" />;
+      return sortOrder === 'asc' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />;
     }
     return null;
   };
@@ -341,6 +341,48 @@ const TransactionList = () => {
       toast({
         title: 'Error',
         description: 'Failed to apply rule. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleReviewTransaction = async (transactionId: string) => {
+    const transaction = transactions.find(t => t.id === transactionId);
+    
+    if (!transaction) {
+      toast({
+        title: 'Error',
+        description: 'Transaction not found.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!transaction.business_id) {
+      toast({
+        title: 'Error',
+        description: 'Please select a business before reviewing the transaction.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const updatedTransaction = await updateTransaction(transactionId, { reviewed: true });
+      if (updatedTransaction) {
+        setTransactions(transactions.map(t => t.id === transactionId ? { ...t, reviewed: true } : t));
+        toast({
+          title: 'Transaction Reviewed',
+          description: 'The transaction has been marked as reviewed.',
+        });
+      } else {
+        throw new Error('Failed to update transaction');
+      }
+    } catch (error) {
+      console.error('Failed to review transaction:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to review the transaction. Please try again.',
         variant: 'destructive',
       });
     }
@@ -470,9 +512,22 @@ const TransactionList = () => {
               <TableCell>{transaction.card_member}</TableCell>
               <TableCell>{transaction.account_number}</TableCell>
               <TableCell>
-                <Button onClick={() => handleDelete(transaction.id)} variant="destructive">
-                  Delete
-                </Button>
+                <div className="flex space-x-2">
+                  <Button onClick={() => handleDelete(transaction.id)} variant="destructive">
+                    Delete
+                  </Button>
+                  <Button 
+                    onClick={() => handleReviewTransaction(transaction.id)} 
+                    variant="outline"
+                    disabled={transaction.reviewed || !transaction.business_id}
+                  >
+                    {transaction.reviewed ? (
+                      <Check className="h-4 w-4 text-gray-400" />
+                    ) : (
+                      <ThumbsUp className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))}

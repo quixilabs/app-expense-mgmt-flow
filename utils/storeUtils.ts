@@ -9,6 +9,7 @@ export type Transaction = {
   business_id?: string | null
   card_member?: string | null
   account_number?: string | null
+  reviewed?: boolean
 }
 
 export async function addTransaction(transaction: Omit<Transaction, 'id'>) {
@@ -48,14 +49,17 @@ export async function getTransactions() {
 }
 
 export async function updateTransaction(id: string, updates: Partial<Transaction>) {
+  const updateData: Partial<Transaction> = {};
+  
+  if (updates.business_id !== undefined) updateData.business_id = updates.business_id;
+  if (updates.card_member !== undefined) updateData.card_member = updates.card_member;
+  if (updates.account_number !== undefined) updateData.account_number = updates.account_number;
+  if (updates.reviewed !== undefined) updateData.reviewed = updates.reviewed;
+  // Add other fields as necessary
+
   const { data, error } = await supabase
     .from('transactions')
-    .update({
-      business_id: updates.business_id,
-      card_member: updates.card_member,
-      account_number: updates.account_number,
-      // Add other fields as necessary
-    })
+    .update(updateData)
     .eq('id', id)
     .select()
     .single();
