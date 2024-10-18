@@ -1,14 +1,28 @@
 import { Sidebar } from '@/components/dashboard/sidebar';
+import { Header } from '@/components/dashboard/header';
+import { auth } from '@clerk/nextjs/server';
+import { redirect } from 'next/navigation';
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { userId } = await auth();
+
+  if (!userId) {
+    redirect('/');
+  }
+
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen">
       <Sidebar />
-      <main className="flex-1 p-8 overflow-auto">{children}</main>
+      <div className="flex flex-col flex-1">
+        <Header />
+        <main className="flex-1 overflow-y-auto p-8">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

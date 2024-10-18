@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/use-toast';
 import PlaidLinkComponent from '@/components/dashboard/plaid-link';
 import { applyRulesToTransactions } from '@/store/ruleStore';
 import BusinessManager from '@/components/dashboard/business-manager';
+import Link from 'next/link';
 
 const RuleManager = dynamic(() => import('@/components/dashboard/rule-manager'), {
   ssr: false,
