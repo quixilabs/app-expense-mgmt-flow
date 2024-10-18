@@ -13,6 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { getTransactions, deleteTransaction, updateTransaction, getBusinesses, addBusiness, Transaction, Business } from '@/utils/storeUtils';
 import { getRules, addRule, Rule } from '@/store/ruleStore';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useUser } from '@clerk/nextjs';
 
 // Update the SortField type to include the new sortable fields
 type SortField = 'date' | 'description' | 'amount' | 'businessId' | 'cardMember' | 'accountNumber';
@@ -37,13 +38,15 @@ const TransactionList = () => {
   const [newRule, setNewRule] = useState({ pattern: '', business_id: '' });
   const [recentBusinessAssignments, setRecentBusinessAssignments] = useState<Array<{ description: string, business_id: string }>>([]);
   const [selectedTransactions, setSelectedTransactions] = useState<string[]>([]);
+  const { user } = useUser();
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
+      if (!user) throw new Error('User not authenticated');
       const [transactionData, businessData, rulesData] = await Promise.all([
-        getTransactions(),
-        getBusinesses(),
+        getTransactions(user.id),
+        getBusinesses(user.id),
         getRules()
       ]);
       console.log('Fetched transactions:', transactionData);
@@ -60,7 +63,7 @@ const TransactionList = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, user]);
 
   useEffect(() => {
     fetchData();
@@ -183,28 +186,28 @@ const TransactionList = () => {
   };
 
   const handleAddBusiness = async () => {
-    if (newBusiness && !businesses.some(b => b.name === newBusiness)) {
-      try {
-        const addedBusiness = await addBusiness(newBusiness);
-        setBusinesses([...businesses, addedBusiness]);
-        setNewBusiness('');
-        setIsAddingBusiness(false);
-        toast({
-          title: 'Business Added',
-          description: `${newBusiness} has been added to the list of businesses.`,
-        });
-      } catch (error) {
-        console.error('Failed to add business:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to add the business. Please try again.',
-          variant: 'destructive',
-        });
-      }
-    } else {
+    if (!user || !newBusiness.trim()) {
       toast({
         title: 'Error',
-        description: 'Please enter a unique business name.',
+        description: 'Please enter a business name and ensure you are logged in.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const addedBusiness = await addBusiness(newBusiness.trim(), user.id);
+      setBusinesses([...businesses, addedBusiness]);
+      setNewBusiness('');
+      toast({
+        title: 'Business Added',
+        description: `${newBusiness} has been added to the list of businesses.`,
+      });
+    } catch (error) {
+      console.error('Failed to add business:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to add the business. Please try again.',
         variant: 'destructive',
       });
     }

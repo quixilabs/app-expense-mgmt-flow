@@ -10,9 +10,13 @@ export type Transaction = {
   card_member?: string | null
   account_number?: string | null
   reviewed?: boolean
+  user_id?: string | null
 }
 
-export async function addTransaction(transaction: Omit<Transaction, 'id'>) {
+export async function addTransaction(transaction: Omit<Transaction, 'id'>, userId: string) {
+  if (!userId) {
+    throw new Error('User ID is required');
+  }
   console.log('Adding transaction to database:', transaction);
   try {
     const { data, error } = await supabase
@@ -24,7 +28,8 @@ export async function addTransaction(transaction: Omit<Transaction, 'id'>) {
         account_number: transaction.account_number,
         amount: transaction.amount,
         business_id: transaction.business_id,
-        category: transaction.category
+        category: transaction.category,
+        user_id: userId
       }])
       .select()
       .single();
@@ -38,17 +43,21 @@ export async function addTransaction(transaction: Omit<Transaction, 'id'>) {
   }
 }
 
-export async function getTransactions() {
+export async function getTransactions(userId: string) {
+  if (!userId) {
+    throw new Error('User ID is required');
+  }
   const { data, error } = await supabase
     .from('transactions')
     .select('*')
+    .eq('user_id', userId)
     .order('date', { ascending: false });
 
   if (error) throw error;
   return data;
 }
 
-export async function updateTransaction(id: string, updates: Partial<Transaction>) {
+export async function updateTransaction(id: string, updates: Partial<Transaction>, userId: string) {
   const updateData: Partial<Transaction> = {};
   
   if (updates.business_id !== undefined) updateData.business_id = updates.business_id;
@@ -68,7 +77,7 @@ export async function updateTransaction(id: string, updates: Partial<Transaction
   return data;
 }
 
-export async function deleteTransaction(id: string) {
+export async function deleteTransaction(id: string, userId: string) {
   const { error } = await supabase
     .from('transactions')
     .delete()
@@ -80,23 +89,32 @@ export async function deleteTransaction(id: string) {
 export type Business = {
   id: string
   name: string
+  user_id: string
 }
 
-export async function addBusiness(name: string) {
+export async function addBusiness(name: string, userId: string) {
+  if (!userId) {
+    throw new Error('User ID is required');
+  }
+  
   const { data, error } = await supabase
     .from('businesses')
-    .insert([{ name }])
+    .insert([{ name, user_id: userId }])
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('Error adding business:', error);
+    throw error;
+  }
   return data;
 }
 
-export async function getBusinesses() {
+export async function getBusinesses(userId: string) {
   const { data, error } = await supabase
     .from('businesses')
     .select('*')
+    .eq('user_id', userId)
     .order('name');
 
   if (error) throw error;
@@ -127,4 +145,33 @@ export async function getRules() {
 
   if (error) throw error;
   return data;
+}
+
+export async function updateBusiness(id: string, updates: Partial<Business>, userId: string) {
+  const { data, error } = await supabase
+    .from('businesses')
+    .update(updates)
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating business:', error);
+    throw error;
+  }
+  return data;
+}
+
+export async function removeBusiness(id: string, userId: string) {
+  const { error } = await supabase
+    .from('businesses')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error removing business:', error);
+    throw error;
+  }
 }

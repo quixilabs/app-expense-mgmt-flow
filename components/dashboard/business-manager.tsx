@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import { supabase } from '@/utils/supabase'
+import { addBusiness, getBusinesses, updateBusiness as updateBusinessUtil, removeBusiness as removeBusinessUtil } from '@/utils/storeUtils'
+import { useUser } from '@clerk/nextjs'
 
 interface Business {
   id: string
   name: string
+  user_id: string
 }
 
 export default function BusinessManager() {
@@ -16,19 +18,18 @@ export default function BusinessManager() {
   const [newBusinessName, setNewBusinessName] = useState('')
   const [editingBusiness, setEditingBusiness] = useState<Business | null>(null)
   const { toast } = useToast()
+  const { user } = useUser()
 
   useEffect(() => {
-    fetchBusinesses()
-  }, [])
+    if (user) {
+      fetchBusinesses()
+    }
+  }, [user])
 
   const fetchBusinesses = async () => {
+    if (!user) return
     try {
-      const { data, error } = await supabase
-        .from('businesses')
-        .select('*')
-        .order('name')
-
-      if (error) throw error
+      const data = await getBusinesses(user.id)
       setBusinesses(data || [])
     } catch (error) {
       console.error('Error fetching businesses:', error)
@@ -40,49 +41,40 @@ export default function BusinessManager() {
     }
   }
 
-  const addBusiness = async () => {
-    if (!newBusinessName.trim()) return
+  const handleAddBusiness = async () => {
+    if (!newBusinessName.trim() || !user) return
     try {
-      const { data, error } = await supabase
-        .from('businesses')
-        .insert({ name: newBusinessName.trim() })
-        .select()
-
-      if (error) throw error
-      setBusinesses([...businesses, data[0]])
+      const data = await addBusiness(newBusinessName.trim(), user.id)
+      setBusinesses([...businesses, data])
       setNewBusinessName('')
       toast({
         title: 'Success',
         description: 'Business added successfully.',
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding business:', error)
       toast({
         title: 'Error',
-        description: 'Failed to add business.',
+        description: error.message || 'Failed to add business.',
         variant: 'destructive',
       })
     }
   }
 
   const removeBusiness = async (id: string) => {
+    if (!user) return
     try {
-      const { error } = await supabase
-        .from('businesses')
-        .delete()
-        .eq('id', id)
-
-      if (error) throw error
+      await removeBusinessUtil(id, user.id)
       setBusinesses(businesses.filter(b => b.id !== id))
       toast({
         title: 'Success',
         description: 'Business removed successfully.',
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error removing business:', error)
       toast({
         title: 'Error',
-        description: 'Failed to remove business.',
+        description: error.message || 'Failed to remove business.',
         variant: 'destructive',
       })
     }
@@ -94,27 +86,21 @@ export default function BusinessManager() {
   }
 
   const updateBusiness = async () => {
-    if (!editingBusiness || !newBusinessName.trim()) return
+    if (!editingBusiness || !newBusinessName.trim() || !user) return
     try {
-      const { data, error } = await supabase
-        .from('businesses')
-        .update({ name: newBusinessName.trim() })
-        .eq('id', editingBusiness.id)
-        .select()
-
-      if (error) throw error
-      setBusinesses(businesses.map(b => b.id === editingBusiness.id ? data[0] : b))
+      const updatedBusiness = await updateBusinessUtil(editingBusiness.id, { name: newBusinessName.trim() }, user.id)
+      setBusinesses(businesses.map(b => b.id === editingBusiness.id ? updatedBusiness : b))
       setEditingBusiness(null)
       setNewBusinessName('')
       toast({
         title: 'Success',
         description: 'Business updated successfully.',
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating business:', error)
       toast({
         title: 'Error',
-        description: 'Failed to update business.',
+        description: error.message || 'Failed to update business.',
         variant: 'destructive',
       })
     }
@@ -132,7 +118,7 @@ export default function BusinessManager() {
         {editingBusiness ? (
           <Button onClick={updateBusiness}>Update</Button>
         ) : (
-          <Button onClick={addBusiness}>Add</Button>
+          <Button onClick={handleAddBusiness}>Add</Button>
         )}
       </div>
       <ul className="space-y-2">
